@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Copyright © 2026 Inkdex */
+/* Copyright © 2026 Chris Walker */
 
 import {
   AdvancedSearchForm,
+  InputRow,
   type FormSectionElement,
   type SearchQuery,
   Section,
@@ -14,101 +15,102 @@ import {
 import { filter } from "../main";
 import type { SearchMetadata } from "../models";
 
-export class MangaWorldAdvancedSearchForm extends AdvancedSearchForm {
+export class ReadComicsAdvancedSearchForm extends AdvancedSearchForm {
   private searchMetadata: SearchMetadata;
 
   constructor(searchQuery: SearchQuery<SearchMetadata>) {
     super();
-    if (searchQuery.metadata !== undefined) {
-      this.searchMetadata = searchQuery.metadata;
-    } else {
-      const def_type = (Application.getState("def_type") as string[] | undefined) ?? [];
-      const hyde_type = (Application.getState("hide_type") as string[] | undefined) ?? [];
-      const hide_tags = (Application.getState("hide_tags") as string[] | undefined) ?? [];
-      this.searchMetadata = {
-        type: Object.fromEntries([
-          ...def_type.map((k) => [k, "included"] as const),
-          ...hyde_type.map((k) => [k, "excluded"] as const),
-        ]),
-        genres: Object.fromEntries(hide_tags.map((k) => [k, "excluded"])) ?? {},
-      };
-    }
+    this.searchMetadata = searchQuery.metadata ?? {};
   }
 
   override getSearchQueryMetadata(): SearchMetadata {
     return this.searchMetadata;
   }
+
   override getSections(): FormSectionElement<unknown>[] {
     return [
-      Section("type", [
-        TriStateSelectRow("type", {
-          title: "Tipologia",
-          value: this.searchMetadata.type ?? {},
+      Section("categories", [
+        TriStateSelectRow("categories", {
+          title: "Categories",
+          value: this.searchMetadata.categories ?? {},
           layout: "list",
-          allowExclusion: true,
+          allowExclusion: false,
           allowEmptySelection: true,
-          items: filter.getMangaTypeFilter().map((x) => ({ id: x.id, title: x.value })),
+          items: filter.getCategoryFilter().map((item) => ({ id: item.id, title: item.value })),
           onValueChange: Application.Selector(
-            this as MangaWorldAdvancedSearchForm,
-            "handleTypeChange",
-          ),
-        }),
-      ]),
-      Section("genres", [
-        TriStateSelectRow("genres", {
-          title: "Generi",
-          value: this.searchMetadata.genres ?? {},
-          layout: "list",
-          items: filter.getGenreFilter().map((x) => ({ id: x.id, title: x.value })),
-          allowExclusion: true,
-          allowEmptySelection: true,
-          onValueChange: Application.Selector(
-            this as MangaWorldAdvancedSearchForm,
-            "handleGenreChange",
-          ),
-        }),
-      ]),
-      Section("year", [
-        StepperRow(`year`, {
-          title: "Anno",
-          value: this.searchMetadata.year ?? 0,
-          minValue: 1990,
-          maxValue: new Date().getFullYear(),
-          stepValue: 1,
-          loopOver: false,
-          onValueChange: Application.Selector(
-            this as MangaWorldAdvancedSearchForm,
-            "handleYearChange",
+            this as ReadComicsAdvancedSearchForm,
+            "handleCategoriesChange",
           ),
         }),
       ]),
       Section("status", [
         SelectRow("status", {
-          title: "Stato",
-          subtitle: "Seleziona lo stato",
+          title: "Status",
           value: this.searchMetadata.status ?? [],
+          layout: "list",
           minItemCount: 0,
-          maxItemCount: 1,
-          options: filter.getStatusFilter().map((x) => ({ id: x.id, title: x.value })),
+          maxItemCount: filter.getStatusFilter().length,
+          items: filter.getStatusFilter().map((item) => ({ id: item.id, title: item.value })),
           onValueChange: Application.Selector(
-            this as MangaWorldAdvancedSearchForm,
+            this as ReadComicsAdvancedSearchForm,
             "handleStatusChange",
+          ),
+        }),
+      ]),
+      Section("types", [
+        SelectRow("types", {
+          title: "Types",
+          value: this.searchMetadata.types ?? [],
+          layout: "list",
+          minItemCount: 0,
+          maxItemCount: filter.getTypeFilter().length,
+          items: filter.getTypeFilter().map((item) => ({ id: item.id, title: item.value })),
+          onValueChange: Application.Selector(
+            this as ReadComicsAdvancedSearchForm,
+            "handleTypesChange",
+          ),
+        }),
+      ]),
+      Section("year", [
+        StepperRow("year", {
+          title: "Year of release",
+          value: this.searchMetadata.year ?? 0,
+          minValue: 0,
+          maxValue: new Date().getFullYear(),
+          stepValue: 1,
+          loopOver: false,
+          onValueChange: Application.Selector(
+            this as ReadComicsAdvancedSearchForm,
+            "handleYearChange",
+          ),
+        }),
+      ]),
+      Section("author", [
+        InputRow("author", {
+          title: "Author",
+          value: this.searchMetadata.author ?? "",
+          onValueChange: Application.Selector(
+            this as ReadComicsAdvancedSearchForm,
+            "handleAuthorChange",
           ),
         }),
       ]),
     ];
   }
 
-  async handleTypeChange(value: Record<string, "included" | "excluded">): Promise<void> {
-    this.searchMetadata.type = value;
-  }
-  async handleGenreChange(value: Record<string, "included" | "excluded">): Promise<void> {
-    this.searchMetadata.genres = value;
+  async handleCategoriesChange(value: Record<string, "included" | "excluded">): Promise<void> {
+    this.searchMetadata.categories = value;
   }
   async handleStatusChange(value: string[]): Promise<void> {
     this.searchMetadata.status = value;
   }
+  async handleTypesChange(value: string[]): Promise<void> {
+    this.searchMetadata.types = value;
+  }
   async handleYearChange(value: number): Promise<void> {
     this.searchMetadata.year = value;
+  }
+  async handleAuthorChange(value: string): Promise<void> {
+    this.searchMetadata.author = value;
   }
 }

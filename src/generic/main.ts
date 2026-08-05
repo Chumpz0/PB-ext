@@ -1,286 +1,236 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Copyright © 2026 Inkdex */
+/* Copyright © 2026 Chris Walker */
 
 import {
   BasicRateLimiter,
   ContentRating,
+  CookieStorageInterceptor,
   DiscoverSectionType,
-  Form,
+  type AdvancedSearchForm,
   type Chapter,
   type ChapterDetails,
   type ChapterProviding,
+  type CloudflareBypassRequestProviding,
+  type Cookie,
   type DiscoverSection,
   type DiscoverSectionItem,
   type DiscoverSectionProviding,
   type Extension,
+  type Form,
   type MangaProviding,
   type PagedResults,
   type SearchQuery,
   type SearchResultItem,
   type SearchResultsProviding,
   type SettingsFormProviding,
-  type SortingOption,
   type SourceManga,
-  AdvancedSearchForm,
 } from "@paperback/types";
 
-import { MangaWorldAdvancedSearchForm } from "./forms/search";
+import { ReadComicsAdvancedSearchForm } from "./forms/search";
 import { Forms } from "./forms/settings";
-import type { MangaMetadata, SearchMetadata, WindowEntry } from "./models";
-import { MainInterceptor, Requests } from "./network";
+import type { ComicMetadata, ParsedComicSummary, SearchMetadata } from "./models";
+import { Requests } from "./network";
 import { Parsers } from "./parsers";
-import { FilterPreferences, JsonParser, Tags, Type } from "./utils";
+import { FilterPreferences } from "./utils";
 
 export const filter = new FilterPreferences();
-export const tags = new Tags();
-export const types = new Type();
-export const jsonParser = new JsonParser();
+export const parsers = new Parsers();
+
 export interface GenericParams {
   name: string;
   domain: string;
-  contentRating: ContentRating;
-  parser?: Parsers;
-  requestManager?: Requests;
+  contentRating?: ContentRating;
 }
 
-export abstract class MangaWorldGeneric
+export abstract class ReadComicsGeneric
   implements
     SettingsFormProviding,
     Extension,
     SearchResultsProviding,
     MangaProviding,
     ChapterProviding,
-    DiscoverSectionProviding
+    DiscoverSectionProviding,
+    CloudflareBypassRequestProviding
 {
   readonly name: string;
-  public base_url = "";
-  public defaultContentRating = ContentRating.EVERYONE;
-  parser: Parsers;
+  public base_url: string;
+  public defaultContentRating: ContentRating;
   requestManager: Requests;
   mainRateLimiter: BasicRateLimiter;
-  mainInterceptor: MainInterceptor;
+  cookieInterceptor: CookieStorageInterceptor;
 
   protected constructor(params: GenericParams) {
     this.name = params.name;
     this.base_url = params.domain;
     this.defaultContentRating = params.contentRating ?? ContentRating.EVERYONE;
-    this.parser = params.parser ?? new Parsers();
-    this.requestManager = params.requestManager ?? new Requests();
-    // Rate limit: Wait 1 sec after 5 requests
+    this.requestManager = new Requests();
+    // Wait 1 sec after 4 requests, this site is more aggressive about rate limiting than most.
     this.mainRateLimiter = new BasicRateLimiter("main", {
-      numberOfRequests: 5,
+      numberOfRequests: 4,
       bufferInterval: 1,
       ignoreImages: true,
     });
-    this.mainInterceptor = new MainInterceptor("main");
+    this.cookieInterceptor = new CookieStorageInterceptor({ storage: "stateManager" });
   }
 
   async initialise(): Promise<void> {
     this.mainRateLimiter.registerInterceptor();
-    this.mainInterceptor.registerInterceptor();
+    this.cookieInterceptor.registerInterceptor();
+  }
+
+  async saveCloudflareBypassCookies(cookies: Cookie[]): Promise<void> {
+    this.cookieInterceptor.cookies = [...this.cookieInterceptor.cookies, ...cookies];
   }
 
   async getSettingsForm(): Promise<Form> {
-    await filter.populateFilter(this);
+    await filter.populateFilters(this);
     return new Forms(this);
   }
-  async getAdvancedSearchForm(
-    searchQuery: SearchQuery<SearchMetadata>,
-  ): Promise<AdvancedSearchForm> {
-    await filter.populateFilter(this);
-    return new MangaWorldAdvancedSearchForm(searchQuery);
+
+  async getAdvancedSearchForm(query: SearchQuery<SearchMetadata>): Promise<AdvancedSearchForm> {
+    await filter.populateFilters(this);
+    return new ReadComicsAdvancedSearchForm(query);
+  }
+
+  private hasAdvancedFilters(metadata: SearchMetadata | undefined): boolean {
+    if (!metadata) return false;
+    return (
+      Object.values(metadata.categories ?? {}).includes("included") ||
+      (metadata.status?.length ?? 0) > 0 ||
+      (metadata.types?.length ?? 0) > 0 ||
+      !!metadata.year ||
+      !!metadata.author
+    );
+  }
+
+  private filterHiddenCategories(items: ParsedComicSummary[]): ParsedComicSummary[] {
+    const hidden = (Application.getState("hide_categories") as string[] | undefined) ?? [];
+    if (hidden.length === 0) return items;
+    const hiddenNames = new Set(
+      filter
+        .getCategoryFilter()
+        .filter((category) => hidden.includes(category.id))
+        .map((category) => category.value),
+    );
+    return items.filter((item) => !item.subtitle || !hiddenNames.has(item.subtitle));
   }
 
   async getSearchResults(
     query: SearchQuery<SearchMetadata>,
-    metadata: MangaMetadata | undefined,
-    sorting: SortingOption,
+    metadata: ComicMetadata | undefined,
   ): Promise<PagedResults<SearchResultItem>> {
-    if (query.metadata === undefined) {
-      const def_type = (Application.getState("def_type") as string[] | undefined) ?? [];
-      const hyde_type = (Application.getState("hide_type") as string[] | undefined) ?? [];
-      const hide_tags = (Application.getState("hide_tags") as string[] | undefined) ?? [];
-      query.metadata = {
-        type: Object.fromEntries([
-          ...def_type.map((k) => [k, "included"] as const),
-          ...hyde_type.map((k) => [k, "excluded"] as const),
-        ]),
-        genres: Object.fromEntries(hide_tags.map((k) => [k, "excluded"])) ?? {},
-      };
-    }
     const page = metadata?.page ?? 1;
-    const { url, excluded } = this.requestManager.constructSearchRequestURL(
-      page,
-      query,
-      sorting,
-      this,
-    );
-    const html = await this.requestManager.getSearchResultsRequests(url);
-    const windowEntry = jsonParser.getWindowEntry(html);
-    return await this.parser.parseSearchResults(excluded, this, metadata, windowEntry);
+
+    if (query.title.length > 0) {
+      const suggestions = await this.requestManager.getSearchSuggestions(this, query.title);
+      const items = parsers.parseSearchSuggestions(suggestions);
+      return { items: parsers.toSearchResultItems(items), metadata: undefined };
+    }
+
+    const html = this.hasAdvancedFilters(query.metadata)
+      ? await this.requestManager.advancedSearch(this, page, query.metadata ?? {})
+      : await this.requestManager.getComicList(this, page);
+
+    const items = this.filterHiddenCategories(parsers.parseComicGrid(html));
+    return {
+      items: parsers.toSearchResultItems(items),
+      metadata: items.length > 0 ? { page: page + 1 } : undefined,
+    };
   }
 
   async getMangaDetails(mangaId: string): Promise<SourceManga> {
-    const data = this.requestManager.fetchPage(`${this.base_url}/manga/${mangaId}`);
-    const html = Application.arrayBufferToUTF8String(await data);
-    const windowEntry = jsonParser.getWindowEntry(html);
-    return this.parser.parseMangaDetails(
-      windowEntry,
+    const html = await this.requestManager.getComicDetails(this, mangaId);
+    const details = parsers.parseComicDetails(html);
+    const sourceManga = parsers.buildMangaDetails(
       mangaId,
-      `${this.base_url}/manga/${mangaId}`,
-      this,
+      `${this.base_url}/comic/${mangaId}`,
+      details,
     );
+    sourceManga.mangaInfo.contentRating = this.defaultContentRating;
+    return sourceManga;
   }
 
   async getChapters(sourceManga: SourceManga): Promise<Chapter[]> {
-    const data = this.requestManager.fetchPage(`${this.base_url}/manga/${sourceManga.mangaId}`);
-    const html = Application.arrayBufferToUTF8String(await data);
-    const windowEntry = jsonParser.getWindowEntry(html);
-    return this.parser.parseChapters(windowEntry, sourceManga);
+    const html = await this.requestManager.getComicDetails(this, sourceManga.mangaId);
+    const entries = parsers.parseChapterList(html);
+    return parsers.buildChapters(sourceManga, entries);
   }
 
   async getChapterDetails(chapter: Chapter): Promise<ChapterDetails> {
-    const data = this.requestManager.fetchPage(
-      `${this.base_url}/manga/${chapter.sourceManga.mangaId}`,
+    const html = await this.requestManager.getChapterPage(
+      this,
+      chapter.sourceManga.mangaId,
+      chapter.chapterId,
     );
-    const html = Application.arrayBufferToUTF8String(await data);
-    const windowEntry = jsonParser.getWindowEntry(html);
-    return this.parser.parseChapterDetails(windowEntry, chapter.chapterId);
+    const pages = parsers.parseChapterPages(html);
+    return parsers.buildChapterDetails(chapter.sourceManga.mangaId, chapter.chapterId, pages);
   }
 
   async getDiscoverSections(): Promise<DiscoverSection[]> {
-    const discover_section: DiscoverSection[] = [];
-    if ((Application.getState("mese_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "mese_section",
-        title: "Tendenze del Mese",
-        subtitle: "Più letti del mese",
-        type: DiscoverSectionType.featured,
-      });
-    }
-    if ((Application.getState("most_read_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "most_read_section",
-        title: "Più Letti",
-        subtitle: "I più popolari di sempre",
-        type: DiscoverSectionType.simpleCarousel,
-      });
-    }
-    if ((Application.getState("new_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "new_manga_section",
-        title: "Nuove Aggiunte",
-        subtitle: "Le nuove Aggiunte",
-        type: DiscoverSectionType.simpleCarousel,
-      });
-    }
-    if ((Application.getState("popular_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "popular_section",
-        title: "Capitoli In Tendenza",
+    const sections: DiscoverSection[] = [];
+    if ((Application.getState("updates_section_enabled") as boolean | undefined) ?? true) {
+      sections.push({
+        id: "updates_section",
+        title: "Latest Updates",
         type: DiscoverSectionType.chapterUpdates,
       });
     }
-    if ((Application.getState("update_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "updated_section",
-        title: "Aggiornati di Recente",
-        subtitle: "Ultimi Capitoli Aggiunti",
-        type: DiscoverSectionType.chapterUpdates,
-      });
-    }
-    if (
-      ((Application.getState("fav_tags_new") as string[])?.length ?? 0) > 0 &&
-      ((Application.getState("fav_section_enabled") as boolean) ?? true)
-    ) {
-      discover_section.push({
-        id: "new_fav_type_section",
-        title: "Nuove Aggiunte dei tuoi Generi Preferiti",
-        subtitle: "Le nuove Aggiunte dei tuoi Generi Preferiti",
+    if ((Application.getState("most_viewed_section_enabled") as boolean | undefined) ?? true) {
+      sections.push({
+        id: "most_viewed_section",
+        title: "Most Viewed",
         type: DiscoverSectionType.simpleCarousel,
       });
     }
-    if ((Application.getState("new_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "new_manga_section",
-        title: "Nuove Aggiunte",
-        subtitle: "Le nuove Aggiunte",
-        type: DiscoverSectionType.simpleCarousel,
-      });
-    }
-    if ((Application.getState("type_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "type_section",
-        title: "Tipologia",
-        subtitle: "Più letti di una tipologia",
+    if ((Application.getState("categories_section_enabled") as boolean | undefined) ?? true) {
+      sections.push({
+        id: "categories_section",
+        title: "Categories",
         type: DiscoverSectionType.genres,
       });
     }
-    if ((Application.getState("genre_section_enabled") as boolean) ?? true) {
-      discover_section.push({
-        id: "genre_section",
-        title: "Genere",
-        subtitle: "Più letti di un genere",
-        type: DiscoverSectionType.genres,
-      });
-    }
-    return discover_section;
+    return sections;
   }
 
-  async getSection(id: string, json: WindowEntry[], metadata: MangaMetadata) {
-    let section: { items: DiscoverSectionItem[]; metadata: MangaMetadata } = {
-      items: [],
-      metadata: metadata,
-    };
-    const parsers: Record<
-      string,
-      () => Promise<{
-        items: DiscoverSectionItem[];
-        metadata: MangaMetadata;
-      }>
-    > = {
-      updated_section: () => this.parser.parseChapterUpdateSection(metadata, this),
-      most_read_section: () => this.parser.parseMostReadSection(metadata, this),
-      new_manga_section: () => this.parser.parseLastAddedSection(metadata, this, false),
-      new_fav_type_section: () => this.parser.parseLastAddedSection(metadata, this, true),
-      genre_section: () => this.parser.parseGenreSection(this, metadata),
-      type_section: () => this.parser.parseTypeSection(this, metadata),
-    };
-    if (id === "popular_section" || id === "mese_section") {
-      for (const item of json) {
-        if (id === "popular_section" && item.kind === "trending") {
-          section = this.parser.parseTrendingChapters(metadata, this, item.data.mostViewedChapters);
-          break;
-        }
-
-        if (id === "mese_section" && item.kind === "global") {
-          section = this.parser.parseMonthTrending(metadata, this, item.data.globalData.topMangas);
-          break;
-        }
-      }
-    }
-    if (section.items.length > 1) return section;
-    const sectionParser = parsers[id];
-    if (sectionParser) return await sectionParser();
-    return section;
+  private buildCategoryDiscoverItems(): DiscoverSectionItem[] {
+    const hidden = (Application.getState("hide_categories") as string[] | undefined) ?? [];
+    return filter
+      .getCategoryFilter()
+      .filter((category) => !hidden.includes(category.id))
+      .map((category) => ({
+        type: "genresCarouselItem",
+        name: category.value,
+        searchQuery: {
+          title: "",
+          metadata: { categories: { [category.id]: "included" as const } },
+        },
+      }));
   }
 
   async getDiscoverSectionItems(
     section: DiscoverSection,
-    metadata: MangaMetadata,
+    metadata?: ComicMetadata,
   ): Promise<PagedResults<DiscoverSectionItem>> {
-    const html = Application.arrayBufferToUTF8String(
-      await this.requestManager.fetchPage(this.base_url),
-    );
-    const windowEntry = jsonParser.getWindowEntry(html);
-    return await this.getSection(section.id, windowEntry, metadata);
-  }
+    const page = metadata?.page ?? 1;
 
-  async getSortingOptions(): Promise<SortingOption[]> {
-    await filter.populateFilter(this);
-    return filter.getOrderFilter().map((item) => ({
-      id: item.id,
-      label: item.value,
-    }));
+    switch (section.id) {
+      case "updates_section": {
+        const html = await this.requestManager.getLatestReleases(this, page);
+        const entries = parsers.parseLatestReleases(html);
+        const { items } = parsers.buildLatestUpdatesSection(entries, { page: page + 1 });
+        return { items, metadata: entries.length > 0 ? { page: page + 1 } : undefined };
+      }
+      case "most_viewed_section": {
+        if (page > 1) return { items: [] };
+        const html = await this.requestManager.getHomePage(this);
+        const items = this.filterHiddenCategories(parsers.parseComicGrid(html));
+        return { items: parsers.toDiscoverSimpleItems(items) };
+      }
+      case "categories_section":
+        await filter.populateFilters(this);
+        return { items: this.buildCategoryDiscoverItems() };
+      default:
+        return { items: [] };
+    }
   }
 }

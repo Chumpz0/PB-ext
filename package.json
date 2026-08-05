@@ -1,7 +1,7 @@
 {
-  "name": "MangaWorld Extensions (0.9)",
+  "name": "Chris Comics Extensions",
   "private": true,
-  "description": "Paperback extensions for websites which use the generic MangaWorld theme.",
+  "description": "Paperback extensions for Chris's comic sources.",
   "type": "module",
   "scripts": {
     "tsc": "tsc",

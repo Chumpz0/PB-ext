@@ -1,110 +1,65 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Copyright © 2026 Inkdex */
+/* Copyright © 2026 Chris Walker */
 
 import { ButtonRow, Form, NavigationRow, Section, SelectRow, ToggleRow } from "@paperback/types";
 
-import { filter, MangaWorldGeneric } from "../main";
+import { filter, type ReadComicsGeneric } from "../main";
 
 export class Forms extends Form {
-  manga_source: MangaWorldGeneric;
-  constructor(manga_source: MangaWorldGeneric) {
+  source: ReadComicsGeneric;
+
+  constructor(source: ReadComicsGeneric) {
     super();
-    this.manga_source = manga_source;
+    this.source = source;
   }
+
   override getSections() {
     return [
       Section("settings", [
-        NavigationRow("contenuti", {
-          title: "Contenuti",
-          subtitle: "Impostazioni Contenuti",
-          form: new FilterSettings(),
-        }),
         NavigationRow("home", {
-          title: "Preferenze Home",
-          subtitle: "Impostazioni Home",
+          title: "Home Sections",
+          subtitle: "Show or hide discover sections",
           form: new HomeSettings(),
         }),
-        ButtonRow("reload_genres", {
-          title: "Ricarica Tutti i Filtri",
+        NavigationRow("content", {
+          title: "Content Filters",
+          subtitle: "Hide categories from browsing and search",
+          form: new ContentSettings(),
+        }),
+        ButtonRow("reload_filters", {
+          title: "Reload Categories/Status/Types",
           onSelect: Application.Selector(this as Forms, "refreshFilters"),
         }),
       ]),
     ];
   }
 
-  async refreshFilters() {
-    await filter.populateFilter(this.manga_source, true);
+  async refreshFilters(): Promise<void> {
+    await filter.populateFilters(this.source, true);
   }
 }
 
-class FilterSettings extends Form {
-  genres = filter.getGenreFilter().map(({ value, ...rest }) => ({
-    title: value,
-    ...rest,
-  }));
+class ContentSettings extends Form {
+  categories = filter.getCategoryFilter().map(({ value, ...rest }) => ({ title: value, ...rest }));
 
-  mangaTypes = filter.getMangaTypeFilter().map(({ value, ...rest }) => ({
-    title: value,
-    ...rest,
-  }));
-
-  public async updateValue(value: string[], filter: string): Promise<void> {
-    Application.setState(value, filter);
-    this.reloadForm();
-  }
   override getSections() {
     return [
       Section(
         {
-          id: "update_settings",
+          id: "hide_categories",
           footer:
-            "Potrebbero non venir nascosti in tutte le sezioni della home. " +
-            "Tieni presente che verranno rimossi anche dalla ricerca",
+            "Hidden categories are removed from browsing, search results, and discover sections.",
         },
         [
-          SelectRow("hide_tags", {
-            title: "Nascondi Generi",
-            subtitle: "Nascondi alcuni Generi",
-            value: this.getHideTagsStatus(),
-            options: this.genres,
+          SelectRow("hide_categories", {
+            title: "Hidden Categories",
+            value: this.getHiddenCategories(),
+            options: this.categories,
             minItemCount: 0,
-            maxItemCount: this.genres.length,
+            maxItemCount: this.categories.length,
             onValueChange: Application.Selector(
-              this as FilterSettings,
-              "handleHideTagsStatusChange",
-            ),
-          }),
-
-          SelectRow("hide_type", {
-            title: "Nascondi Tipologia",
-            subtitle: "Nascondi alcune Tipologie",
-            value: this.getHideTypeStatus(),
-            options: this.mangaTypes,
-            minItemCount: 0,
-            maxItemCount: this.mangaTypes.length,
-            onValueChange: Application.Selector(
-              this as FilterSettings,
-              "handleHideTypeStatusChange",
-            ),
-          }),
-        ],
-      ),
-      Section(
-        {
-          id: "default_settings",
-          footer: "Cambia i filtri di default della ricerca",
-        },
-        [
-          SelectRow("def_type", {
-            title: "Tipologia",
-            subtitle: "Tipologia di default",
-            value: this.getDefTypeStatus(),
-            options: this.mangaTypes,
-            minItemCount: 0,
-            maxItemCount: 1,
-            onValueChange: Application.Selector(
-              this as FilterSettings,
-              "handleDefTypeStatusChange",
+              this as ContentSettings,
+              "handleHiddenCategoriesChange",
             ),
           }),
         ],
@@ -112,208 +67,62 @@ class FilterSettings extends Form {
     ];
   }
 
-  getHideTagsStatus(): string[] {
-    return (Application.getState("hide_tags") as string[] | undefined) ?? [];
+  getHiddenCategories(): string[] {
+    return (Application.getState("hide_categories") as string[] | undefined) ?? [];
   }
 
-  async handleHideTagsStatusChange(value: string[]): Promise<void> {
-    await this.updateValue(value, "hide_tags");
-  }
-
-  getHideTypeStatus(): string[] {
-    return (Application.getState("hide_type") as string[] | undefined) ?? [];
-  }
-
-  async handleHideTypeStatusChange(value: string[]): Promise<void> {
-    await this.updateValue(value, "hide_type");
-  }
-
-  getDefTypeStatus(): string[] {
-    return (Application.getState("def_type") as string[] | undefined) ?? [];
-  }
-
-  async handleDefTypeStatusChange(value: string[]): Promise<void> {
-    await this.updateValue(value, "def_type");
-  }
-}
-
-class FavSettings extends Form {
-  public async updateValue(value: string[], filter: string): Promise<void> {
-    Application.setState(value, filter);
+  async handleHiddenCategoriesChange(value: string[]): Promise<void> {
+    Application.setState(value, "hide_categories");
     this.reloadForm();
-  }
-
-  public async updateToggleValue(value: boolean, filter: string): Promise<void> {
-    Application.setState(value, filter);
-    this.reloadForm();
-    Application.invalidateDiscoverSections();
-  }
-  genres = filter.getGenreFilter().map(({ value, ...rest }) => ({
-    title: value,
-    ...rest,
-  }));
-  override getSections() {
-    return [
-      Section(
-        {
-          id: "home_settings",
-          footer: "Mostra/Nascondi le Sezioni nella Home",
-        },
-        [
-          ToggleRow("fav_section_enabled", {
-            title: "Abilita le Ultime Aggiunte dei Generi Preferiti",
-            subtitle: "Puoi impostare i generi tramite l'impostazione sotto",
-            value: this.getFavStatus(),
-            onValueChange: Application.Selector(this as FavSettings, "handleFavStatusChange"),
-          }),
-          SelectRow("fav_tags_new", {
-            title: "Generi Preferiti",
-            subtitle: "Seleziona i generi per la sezione sopra",
-            value: this.getFavTagsNewStatus(),
-            options: this.genres,
-            minItemCount: 0,
-            maxItemCount: 3,
-            onValueChange: Application.Selector(
-              this as FavSettings,
-              "handleFavTagsNewStatusChange",
-            ),
-            isHidden: !this.getFavStatus(),
-          }),
-        ],
-      ),
-    ];
-  }
-
-  getFavStatus(): boolean {
-    return (Application.getState("fav_section_enabled") as boolean) ?? true;
-  }
-
-  async handleFavStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "fav_section_enabled");
-  }
-
-  getFavTagsNewStatus(): string[] {
-    return (Application.getState("fav_tags_new") as string[] | undefined) ?? [];
-  }
-
-  async handleFavTagsNewStatusChange(value: string[]): Promise<void> {
-    await this.updateValue(value, "fav_tags_new");
-    Application.invalidateDiscoverSections();
   }
 }
 
 class HomeSettings extends Form {
-  public async updateToggleValue(value: boolean, filter: string): Promise<void> {
-    Application.setState(value, filter);
-    this.reloadForm();
-    Application.invalidateDiscoverSections();
-  }
   override getSections() {
     return [
       Section(
         {
           id: "home_settings",
-          footer: "Mostra/Nascondi le Sezioni nella Home",
+          footer: "Toggle which sections appear on the Home tab.",
         },
         [
-          ToggleRow("popular_section_enabled", {
-            title: "Abilita Popolari",
-            value: this.getPopularStatus(),
-            onValueChange: Application.Selector(this as HomeSettings, "handlePopularStatusChange"),
+          ToggleRow("updates_section_enabled", {
+            title: "Latest Updates",
+            value: this.getToggle("updates_section_enabled"),
+            onValueChange: Application.Selector(this as HomeSettings, "handleUpdatesToggle"),
           }),
-          ToggleRow("mese_section_enabled", {
-            title: "Abilita Tendenze del Mese",
-            value: this.getMeseStatus(),
-            onValueChange: Application.Selector(this as HomeSettings, "handleMeseStatusChange"),
+          ToggleRow("most_viewed_section_enabled", {
+            title: "Most Viewed",
+            value: this.getToggle("most_viewed_section_enabled"),
+            onValueChange: Application.Selector(this as HomeSettings, "handleMostViewedToggle"),
           }),
-          ToggleRow("most_read_section_enabled", {
-            title: "Abilita Più Letti",
-            value: this.getMostReadStatus(),
-            onValueChange: Application.Selector(this as HomeSettings, "handleMostReadStatusChange"),
-          }),
-          ToggleRow("update_section_enabled", {
-            title: "Abilita Aggiornati di Recente",
-            value: this.getUpdateStatus(),
-            onValueChange: Application.Selector(this as HomeSettings, "handleUpdateStatusChange"),
-          }),
-          ToggleRow("new_section_enabled", {
-            title: "Abilita Ultime Aggiunte",
-            value: this.getNewStatus(),
-            onValueChange: Application.Selector(this as HomeSettings, "handleNewStatusChange"),
-          }),
-          ToggleRow("type_section_enabled", {
-            title: "Abilita Tipologia",
-            value: this.getTypeStatus(),
-            onValueChange: Application.Selector(this as HomeSettings, "handleTypeStatusChange"),
-          }),
-          ToggleRow("genres_section_enabled", {
-            title: "Abilita Generi",
-            value: this.getGenreStatus(),
-            onValueChange: Application.Selector(this as HomeSettings, "handleGenreStatusChange"),
-          }),
-          NavigationRow("fav_section", {
-            title: "Preferiti",
-            subtitle: "Impostazioni sui Preferiti",
-            form: new FavSettings(),
+          ToggleRow("categories_section_enabled", {
+            title: "Browse by Category",
+            value: this.getToggle("categories_section_enabled"),
+            onValueChange: Application.Selector(this as HomeSettings, "handleCategoriesToggle"),
           }),
         ],
       ),
     ];
   }
 
-  getPopularStatus(): boolean {
-    return (Application.getState("popular_section_enabled") as boolean) ?? true;
+  getToggle(key: string): boolean {
+    return (Application.getState(key) as boolean | undefined) ?? true;
   }
 
-  async handlePopularStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "popular_section_enabled");
+  private async setToggle(key: string, value: boolean): Promise<void> {
+    Application.setState(value, key);
+    this.reloadForm();
+    Application.invalidateDiscoverSections();
   }
 
-  getMeseStatus(): boolean {
-    return (Application.getState("mese_section_enabled") as boolean) ?? true;
+  async handleUpdatesToggle(value: boolean): Promise<void> {
+    await this.setToggle("updates_section_enabled", value);
   }
-
-  async handleMeseStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "mese_section_enabled");
+  async handleMostViewedToggle(value: boolean): Promise<void> {
+    await this.setToggle("most_viewed_section_enabled", value);
   }
-
-  getMostReadStatus(): boolean {
-    return (Application.getState("most_read_section_enabled") as boolean) ?? true;
-  }
-
-  async handleMostReadStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "most_read_section_enabled");
-  }
-
-  getUpdateStatus(): boolean {
-    return (Application.getState("update_section_enabled") as boolean) ?? true;
-  }
-
-  async handleUpdateStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "update_section_enabled");
-  }
-
-  getNewStatus(): boolean {
-    return (Application.getState("new_section_enabled") as boolean) ?? true;
-  }
-
-  async handleNewStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "new_section_enabled");
-  }
-
-  getTypeStatus(): boolean {
-    return (Application.getState("type_section_enabled") as boolean) ?? true;
-  }
-
-  async handleTypeStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "type_section_enabled");
-  }
-
-  getGenreStatus(): boolean {
-    return (Application.getState("genre_section_enabled") as boolean) ?? true;
-  }
-
-  async handleGenreStatusChange(value: boolean): Promise<void> {
-    await this.updateToggleValue(value, "genre_section_enabled");
+  async handleCategoriesToggle(value: boolean): Promise<void> {
+    await this.setToggle("categories_section_enabled", value);
   }
 }
