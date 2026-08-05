@@ -1,0 +1,35 @@
+{
+  "buildTime": "2026-08-05T23:50:28.115Z",
+  "builtWith": {
+    "toolchain": "1.0.0-alpha.89",
+    "types": "1.0.0-alpha.89"
+  },
+  "repository": {
+    "name": "Chris Comics Extensions",
+    "description": "Paperback extensions for Chris's comic sources."
+  },
+  "sources": [
+    {
+      "name": "ReadComicsOnline",
+      "description": "Extension that pulls content from readcomicsonline.ru.",
+      "version": "0.1.0",
+      "icon": "icon.png",
+      "language": "en",
+      "contentRating": "SAFE",
+      "capabilities": [
+        1,
+        4,
+        64,
+        32,
+        16
+      ],
+      "badges": [],
+      "developers": [
+        {
+          "name": "Chris Walker"
+        }
+      ],
+      "id": "ReadComicsOnline"
+    }
+  ]
+}
