@@ -3,7 +3,7 @@
 
 import { ContentRating, SourceIntents, type SourceInfo } from "@paperback/types";
 
-const BASE_VERSION = "0.1.0";
+const BASE_VERSION = "0.1.1";
 
 export const baseSourceInfo = {
   name: "",
