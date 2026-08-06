@@ -60,20 +60,26 @@ class ReadComicsOnlineExtension
    * lazy and only run once a real request is made from inside the app.
    */
   override get requestManager(): RequestManager {
-    this._requestManager ??= App.createRequestManager({
-      requestsPerSecond: 4,
-      requestTimeout: 20_000,
-    });
+    if (!this._requestManager) {
+      this._requestManager = App.createRequestManager({
+        requestsPerSecond: 4,
+        requestTimeout: 20_000,
+      });
+    }
     return this._requestManager;
   }
 
   private get requests(): Requests {
-    this._requests ??= new Requests(this.baseUrl, this.requestManager);
+    if (!this._requests) {
+      this._requests = new Requests(this.baseUrl, this.requestManager);
+    }
     return this._requests;
   }
 
   private get stateManager(): SourceStateManager {
-    this._stateManager ??= App.createSourceStateManager();
+    if (!this._stateManager) {
+      this._stateManager = App.createSourceStateManager();
+    }
     return this._stateManager;
   }
 

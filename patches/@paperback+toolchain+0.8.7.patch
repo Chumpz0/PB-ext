@@ -1,8 +1,8 @@
 diff --git a/node_modules/@paperback/toolchain/dist/commands/bundle.js b/node_modules/@paperback/toolchain/dist/commands/bundle.js
-index a5f42c0..7cd519d 100644
+index a5f42c0..584d00d 100644
 --- a/node_modules/@paperback/toolchain/dist/commands/bundle.js
 +++ b/node_modules/@paperback/toolchain/dist/commands/bundle.js
-@@ -159,13 +159,13 @@ class Bundle extends command_1.CLICommand {
+@@ -159,13 +159,14 @@ class Bundle extends command_1.CLICommand {
          await esbuild.build({
              entryPoints: entryPoints,
              mainFields: ['module', 'window', 'self', 'main', 'global', 'this'],
@@ -10,6 +10,7 @@ index a5f42c0..7cd519d 100644
 +            globalName: 'Sources',
              bundle: true,
              format: 'iife',
++            target: 'es2020',
              outdir: bundlesPath,
              external: ['axios', 'fs'],
              footer: {
