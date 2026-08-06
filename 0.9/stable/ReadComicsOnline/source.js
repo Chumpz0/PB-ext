@@ -1,5 +1,5 @@
 "use strict";
-var _Sources = (() => {
+var Sources = (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -15739,7 +15739,7 @@ var _Sources = (() => {
 
   // common/config.ts
   var import_types5 = __toESM(require_lib());
-  var BASE_VERSION = "0.1.1";
+  var BASE_VERSION = "0.1.2";
   var baseSourceInfo = {
     name: "",
     description: "",
@@ -15903,4 +15903,4 @@ var _Sources = (() => {
   var ReadComicsOnlineInfo = pbconfig_default;
   return __toCommonJS(ReadComicsOnline_exports);
 })();
-this.Sources = _Sources; if (typeof exports === 'object' && typeof module !== 'undefined') {module.exports.Sources = this.Sources;}
+if (typeof exports === 'object' && typeof module !== 'undefined') {module.exports.Sources = Sources;}
