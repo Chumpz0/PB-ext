@@ -3,7 +3,7 @@
 
 import { ContentRating, SourceIntents, type SourceInfo } from "@paperback/types";
 
-const BASE_VERSION = "0.2.1";
+const BASE_VERSION = "1.0.0";
 
 export const baseSourceInfo = {
   name: "",
@@ -17,6 +17,5 @@ export const baseSourceInfo = {
   intents:
     SourceIntents.MANGA_CHAPTERS |
     SourceIntents.HOMEPAGE_SECTIONS |
-    SourceIntents.CLOUDFLARE_BYPASS_REQUIRED |
-    SourceIntents.SETTINGS_UI,
+    SourceIntents.CLOUDFLARE_BYPASS_REQUIRED,
 } satisfies SourceInfo;

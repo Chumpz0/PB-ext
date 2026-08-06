@@ -5,8 +5,8 @@ import { baseSourceInfo } from "../../common/config";
 
 const sourceInfo = baseSourceInfo;
 
-sourceInfo.name = "ReadComicsOnline";
-sourceInfo.description = "Extension that pulls content from readcomicsonline.ru.";
-sourceInfo.websiteBaseURL = "https://readcomicsonline.ru";
+sourceInfo.name = "XoxoComic";
+sourceInfo.description = "Extension that pulls comics from xoxocomic.com.";
+sourceInfo.websiteBaseURL = "https://xoxocomic.com";
 
 export default sourceInfo;

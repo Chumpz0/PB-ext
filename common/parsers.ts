@@ -4,7 +4,6 @@
 import {
   type Chapter,
   type ChapterDetails,
-  type HomeSection,
   type PagedResults,
   type PartialSourceManga,
   type SourceManga,
@@ -17,31 +16,55 @@ import type {
   ParsedChapterEntry,
   ParsedComicDetails,
   ParsedComicSummary,
-  SearchSuggestion,
 } from "./models";
 
-function absoluteImageUrl(src: string): string {
-  const trimmed = src.trim();
-  if (!trimmed) return "";
-  return trimmed.startsWith("//") ? `https:${trimmed}` : trimmed;
+/** The markup indents multi-value fields across lines, so collapse runs of whitespace. */
+function normalize(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
-function slugFromComicHref(href: string): string {
-  const afterComic = href.split("/comic/")[1] ?? "";
-  return (afterComic.split("?")[0] ?? "").replace(/\/$/, "");
+/**
+ * These share the genre URL shape (/<name>-comic) but are navigation filters, not genres.
+ */
+const NON_GENRE_IDS = new Set([
+  "hot-comic",
+  "follow-comic",
+  "new-comic",
+  "popular-comic",
+  "completed-comic",
+  "ongoing-comic",
+]);
+
+/** Covers are lazy-loaded: `src` holds a placeholder, the real URL is in `data-original`. */
+function imageFrom($img: { attr(name: string): string | undefined }): string {
+  const src = ($img.attr("data-original") ?? $img.attr("src") ?? "").trim();
+  return src.startsWith("data:") ? "" : src;
 }
 
-// Dates on the site render like "20 Mar. 2025" or relative strings like "Yesterday".
-function parseChapterDate(text: string): Date {
-  const cleaned = text.trim();
-  if (/yesterday/i.test(cleaned)) {
-    const date = new Date();
-    date.setDate(date.getDate() - 1);
-    return date;
-  }
-  if (/today/i.test(cleaned) || !cleaned) return new Date();
-  const parsed = new Date(cleaned.replace(".", ""));
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+/** `https://host/comic/absolute-catwoman` -> `absolute-catwoman` */
+function comicIdFromHref(href: string): string {
+  const after = href.split("/comic/")[1] ?? "";
+  return (after.split("?")[0] ?? "").replace(/\/$/, "").split("/")[0] ?? "";
+}
+
+/** `https://host/comic/absolute-catwoman/issue-1` -> `issue-1` */
+function chapterIdFromHref(href: string): string {
+  const after = href.split("/comic/")[1] ?? "";
+  const parts = (after.split("?")[0] ?? "").replace(/\/$/, "").split("/");
+  return parts[1] ?? "";
+}
+
+function chapterNumberFrom(text: string): number {
+  const match = /(\d+(?:\.\d+)?)/.exec(text);
+  return match?.[1] ? Number(match[1]) : 0;
+}
+
+/** Dates render as MM/DD/YYYY. */
+function parseDate(text: string): Date | undefined {
+  const match = /(\d{2})\/(\d{2})\/(\d{4})/.exec(text.trim());
+  if (!match) return undefined;
+  const parsed = new Date(`${match[3]}-${match[1]}-${match[2]}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 export class Parsers {
@@ -53,44 +76,167 @@ export class Parsers {
   constructor(private readonly cheerio: CheerioAPI) {}
 
   /**
-   * Shared by /comic-list and the homepage "Most Viewed" widget: both render
-   * comics as `.media` blocks with a title link and (usually) a cover image.
+   * Row listings (/comic-list, /comic-update, genre pages) share one shape: an `li.row`
+   * holding the comic link plus a hidden hover tooltip that carries the cover image.
    */
-  parseComicGrid(html: string): ParsedComicSummary[] {
+  parseComicRows(html: string): ParsedComicSummary[] {
     const $ = this.cheerio.load(html);
     const items: ParsedComicSummary[] = [];
 
-    $(".media").each((_, el) => {
+    $("li.row").each((_, el) => {
       const $el = $(el);
-      const link = $el.find(".media-heading a").first();
-      const id = slugFromComicHref(link.attr("href") ?? "");
+      const link = $el.find("h3 a").first();
+      const id = comicIdFromHref(link.attr("href") ?? "");
       if (!id) return;
-
-      let subtitle: string | undefined;
-      $el.find(".media-body > div").each((__, div) => {
-        const $div = $(div);
-        if ($div.attr("id") || $div.find("a, i.fa-eye").length > 0) return;
-        const text = $div.text().trim();
-        if (text) subtitle = text;
-      });
 
       items.push({
         id,
-        title: link.text().trim(),
-        imageUrl: absoluteImageUrl($el.find(".media-left img").attr("src") ?? ""),
-        subtitle,
+        title: normalize(link.text()),
+        imageUrl: imageFrom($el.find(".box_tootip .box_img img").first()),
+        subtitle: normalize($el.find(".col-xs-3").first().text()) || undefined,
       });
     });
 
     return items;
   }
 
-  parseSearchSuggestions(suggestions: SearchSuggestion[]): ParsedComicSummary[] {
-    return suggestions.map((suggestion) => ({
-      id: suggestion.data,
-      title: this.cheerio.load(suggestion.value).text().trim(),
-      imageUrl: "",
-    }));
+  /** Search results use a card grid rather than the row layout. */
+  parseSearchResults(html: string): ParsedComicSummary[] {
+    const $ = this.cheerio.load(html);
+    const items: ParsedComicSummary[] = [];
+
+    $(".item").each((_, el) => {
+      const $el = $(el);
+      const link = $el.find("figcaption h3 a").first();
+      const id = comicIdFromHref(link.attr("href") ?? "");
+      if (!id) return;
+
+      items.push({
+        id,
+        title: normalize(link.text()),
+        imageUrl: imageFrom($el.find(".image img").first()),
+      });
+    });
+
+    return items;
+  }
+
+  /** /comic-update rows also carry the newest issue, used for the chapter-updates section. */
+  parseLatestUpdates(html: string): { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[] {
+    const $ = this.cheerio.load(html);
+    const results: { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[] = [];
+
+    $("li.row").each((_, el) => {
+      const $el = $(el);
+      const comicLink = $el.find("h3 a").first();
+      const comicId = comicIdFromHref(comicLink.attr("href") ?? "");
+      if (!comicId) return;
+
+      const chapterLink = $el.find(".hlb-list a").first();
+      const chapterHref = chapterLink.attr("href") ?? "";
+      const chapterId = chapterIdFromHref(chapterHref);
+      if (!chapterId) return;
+
+      results.push({
+        manga: {
+          id: comicId,
+          title: normalize(comicLink.text()),
+          imageUrl: imageFrom($el.find(".box_tootip .box_img img").first()),
+        },
+        chapter: {
+          id: chapterId,
+          chapterNum: chapterNumberFrom(chapterId),
+          title: normalize(chapterLink.text()),
+          publishDate: parseDate($el.find(".col-xs-3").first().text()),
+        },
+      });
+    });
+
+    return results;
+  }
+
+  /** Genre links are plain top-level paths, e.g. /action-comic. */
+  parseGenres(html: string): OptionItem[] {
+    const $ = this.cheerio.load(html);
+    const seen = new Set<string>();
+    const genres: OptionItem[] = [];
+
+    $("a[href*='-comic']").each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr("href") ?? "";
+      if (href.includes("/comic/") || href.includes("comic-list")) return;
+
+      const id = (href.split("/").pop() ?? "").split("?")[0] ?? "";
+      const label = normalize($el.text());
+      if (!id.endsWith("-comic") || !label || seen.has(id) || NON_GENRE_IDS.has(id)) return;
+
+      seen.add(id);
+      genres.push({ id, value: label });
+    });
+
+    return genres;
+  }
+
+  parseComicDetails(html: string): ParsedComicDetails {
+    const $ = this.cheerio.load(html);
+    const info = $(".detail-info");
+
+    const genres: OptionItem[] = [];
+    info.find("li.kind a").each((_, el) => {
+      const $el = $(el);
+      const id = ($el.attr("href") ?? "").split("/").pop() ?? "";
+      const label = normalize($el.text());
+      if (id && label) genres.push({ id, value: label });
+    });
+
+    const altName = normalize(info.find("li.othername .other-name").text());
+
+    return {
+      // The heading is "<Name> Comic"; drop the suffix the site appends.
+      title: $("h1.title-detail")
+        .first()
+        .text()
+        .trim()
+        .replace(/Comic$/i, "")
+        .trim(),
+      imageUrl: imageFrom(info.find(".col-image img").first()),
+      synopsis: normalize($(".detail-content p").first().text()),
+      author: normalize(info.find("li.author p.col-xs-8").text()) || undefined,
+      status: normalize(info.find("li.status p.col-xs-8").text()) || undefined,
+      genres,
+      altTitles: altName ? [altName] : [],
+    };
+  }
+
+  parseChapterList(html: string): ParsedChapterEntry[] {
+    const $ = this.cheerio.load(html);
+    const entries: ParsedChapterEntry[] = [];
+
+    $(".list-chapter li.row").each((_, el) => {
+      const $el = $(el);
+      const link = $el.find(".chapter a").first();
+      const id = chapterIdFromHref(link.attr("href") ?? "");
+      if (!id) return;
+
+      const title = normalize(link.text());
+      entries.push({
+        id,
+        chapterNum: chapterNumberFrom(title) || chapterNumberFrom(id),
+        title,
+        publishDate: parseDate($el.find(".col-xs-3").first().text()),
+      });
+    });
+
+    return entries;
+  }
+
+  /** Requires the /all view; each page image keeps its URL in `data-original`. */
+  parseChapterPages(html: string): string[] {
+    const $ = this.cheerio.load(html);
+    return $(".page-chapter img")
+      .map((_, img) => imageFrom($(img)))
+      .get()
+      .filter((src) => src.length > 0);
   }
 
   toPartialSourceMangas(items: ParsedComicSummary[]): PartialSourceManga[] {
@@ -104,105 +250,8 @@ export class Parsers {
     );
   }
 
-  parseLatestReleases(html: string): { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[] {
-    const $ = this.cheerio.load(html);
-    const results: { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[] = [];
-
-    $(".manga-item").each((_, el) => {
-      const $el = $(el);
-      const mangaLink = $el.find(".manga-heading a").first();
-      const mangaId = slugFromComicHref(mangaLink.attr("href") ?? "");
-      if (!mangaId) return;
-
-      const chapterLink = $el.find(".manga-chapter a").first();
-      const chapterId = (chapterLink.attr("href") ?? "").split("/").pop() ?? "";
-
-      results.push({
-        manga: { id: mangaId, title: mangaLink.text().trim(), imageUrl: "" },
-        chapter: {
-          id: chapterId,
-          chapterNum: Number(chapterId) || 0,
-          title: chapterLink.text().trim(),
-          publishDate: parseChapterDate($el.find("h3.manga-heading + small").first().text()),
-        },
-      });
-    });
-
-    return results;
-  }
-
-  parseComicDetails(html: string): ParsedComicDetails {
-    const $ = this.cheerio.load(html);
-
-    let author: string | undefined;
-    let status: string | undefined;
-    let type: string | undefined;
-    const genres: OptionItem[] = [];
-
-    $(".dl-horizontal dt").each((_, dt) => {
-      const $dt = $(dt);
-      const label = $dt.text().trim().toLowerCase();
-      const dd = $dt.next("dd");
-      if (label === "type") type = dd.text().trim();
-      else if (label === "status") status = dd.text().trim();
-      else if (label.startsWith("author"))
-        author = dd.find("a").first().text().trim() || dd.text().trim();
-    });
-
-    $("dd.tag-links a").each((_, a) => {
-      const $a = $(a);
-      const slug = ($a.attr("href") ?? "").split("/").pop() ?? "";
-      if (slug) genres.push({ id: slug, value: $a.text().trim() });
-    });
-
-    const ratingAttr = $("[data-score]").first().attr("data-score");
-
-    return {
-      title: $(".listmanga-header")
-        .first()
-        .text()
-        .replace(/Chapters$/i, "")
-        .trim(),
-      imageUrl: absoluteImageUrl($(".boxed img").first().attr("src") ?? ""),
-      synopsis: $(".manga.well p").first().text().trim(),
-      author,
-      status,
-      type,
-      genres,
-      rating: ratingAttr ? Number(ratingAttr) : undefined,
-    };
-  }
-
-  parseChapterList(html: string): ParsedChapterEntry[] {
-    const $ = this.cheerio.load(html);
-    const entries: ParsedChapterEntry[] = [];
-
-    $(".chapters > li").each((_, li) => {
-      const $li = $(li);
-      const link = $li.find(".chapter-title-rtl a").first();
-      const id = (link.attr("href") ?? "").split("/").pop() ?? "";
-      if (!id) return;
-
-      entries.push({
-        id,
-        chapterNum: Number(id) || 0,
-        title: link.text().trim(),
-        publishDate: parseChapterDate($li.find(".date-chapter-title-rtl").first().text()),
-      });
-    });
-
-    return entries;
-  }
-
-  parseChapterPages(html: string): string[] {
-    const $ = this.cheerio.load(html);
-    // `#all` sits inside `.imagecnt`, not the other way round. Each <img> carries a base64
-    // placeholder in `src` and the real page URL in `data-src`.
-    return $("#all img")
-      .map((_, img) => $(img).attr("data-src") ?? $(img).attr("src") ?? "")
-      .get()
-      .map((src) => absoluteImageUrl(src))
-      .filter((src) => src.length > 0 && !src.startsWith("data:"));
+  toPagedResults(items: ParsedComicSummary[], metadata: unknown): PagedResults {
+    return App.createPagedResults({ results: this.toPartialSourceMangas(items), metadata });
   }
 
   buildMangaDetails(comicId: string, details: ParsedComicDetails): SourceManga {
@@ -222,10 +271,8 @@ export class Parsers {
         desc: details.synopsis,
         status: details.status ?? "Unknown",
         hentai: false,
-        titles: [details.title],
-        rating: details.rating,
+        titles: [details.title, ...details.altTitles],
         tags: tagSections,
-        additionalInfo: details.type ? { Type: details.type } : undefined,
       }),
     });
   }
@@ -245,30 +292,5 @@ export class Parsers {
 
   buildChapterDetails(mangaId: string, chapterId: string, pages: string[]): ChapterDetails {
     return App.createChapterDetails({ id: chapterId, mangaId, pages });
-  }
-
-  buildLatestUpdatesHomeSection(
-    id: string,
-    title: string,
-    entries: { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[],
-    containsMoreItems: boolean,
-  ): HomeSection {
-    return App.createHomeSection({
-      id,
-      title,
-      type: "singleRowNormal",
-      containsMoreItems,
-      items: entries.map(({ manga }) =>
-        App.createPartialSourceManga({
-          mangaId: manga.id,
-          title: manga.title,
-          image: manga.imageUrl,
-        }),
-      ),
-    });
-  }
-
-  toPagedResults(items: ParsedComicSummary[], metadata: unknown): PagedResults {
-    return App.createPagedResults({ results: this.toPartialSourceMangas(items), metadata });
   }
 }

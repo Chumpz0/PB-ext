@@ -26,14 +26,8 @@ export interface ParsedComicDetails {
   synopsis: string;
   author?: string;
   status?: string;
-  type?: string;
   genres: OptionItem[];
-  rating?: number;
-}
-
-export interface SearchSuggestion {
-  value: string;
-  data: string;
+  altTitles: string[];
 }
 
 export type HomePageMetadata = {
