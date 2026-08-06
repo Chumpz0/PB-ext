@@ -196,11 +196,13 @@ export class Parsers {
 
   parseChapterPages(html: string): string[] {
     const $ = this.cheerio.load(html);
-    return $("#all .imagecnt img")
+    // `#all` sits inside `.imagecnt`, not the other way round. Each <img> carries a base64
+    // placeholder in `src` and the real page URL in `data-src`.
+    return $("#all img")
       .map((_, img) => $(img).attr("data-src") ?? $(img).attr("src") ?? "")
       .get()
       .map((src) => absoluteImageUrl(src))
-      .filter((src) => src.length > 0);
+      .filter((src) => src.length > 0 && !src.startsWith("data:"));
   }
 
   buildMangaDetails(comicId: string, details: ParsedComicDetails): SourceManga {

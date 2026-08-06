@@ -52,6 +52,20 @@ export class ReadComicsOnline
     this.requestManager = App.createRequestManager({
       requestsPerSecond: 4,
       requestTimeout: 20_000,
+      // Cloudflare challenges requests that don't look like a real browser, so send the
+      // app's own user-agent and a same-site referer on everything.
+      interceptor: {
+        interceptRequest: async (request) => {
+          request.headers = {
+            // Spreading undefined is a no-op, so this stays safe if the app sends no headers.
+            ...request.headers,
+            "user-agent": await this.requestManager.getDefaultUserAgent(),
+            referer: `${this.baseUrl}/`,
+          };
+          return request;
+        },
+        interceptResponse: async (response) => response,
+      },
     });
     this.stateManager = App.createSourceStateManager();
     this.requests = new Requests(this.baseUrl, this.requestManager);

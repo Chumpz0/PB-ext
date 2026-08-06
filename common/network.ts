@@ -28,6 +28,19 @@ export class Requests {
       headers: init?.headers,
     });
     const response = await this.requestManager.schedule(request, 3);
+
+    // Cloudflare answers a challenged request with a 403/503 HTML page. Without this the
+    // parsers just find nothing in it and every section silently renders empty, which gives
+    // the user no idea they need to run the bypass.
+    if (response.status === 403 || response.status === 503) {
+      throw new Error(
+        `CLOUDFLARE BYPASS ERROR:\nPlease go to the homepage of <${this.baseUrl}> and press the cloud icon.`,
+      );
+    }
+    if (response.status === 404) {
+      throw new Error(`The requested page ${url} was not found!`);
+    }
+
     return response.data ?? "";
   }
 
