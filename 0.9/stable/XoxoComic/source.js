@@ -624,12 +624,12 @@ var _Sources = (() => {
         SourceIntents3[SourceIntents3["CLOUDFLARE_BYPASS_REQUIRED"] = 16] = "CLOUDFLARE_BYPASS_REQUIRED";
         SourceIntents3[SourceIntents3["SETTINGS_UI"] = 32] = "SETTINGS_UI";
       })(SourceIntents2 = exports.SourceIntents || (exports.SourceIntents = {}));
-      var ContentRating3;
-      (function(ContentRating4) {
-        ContentRating4["EVERYONE"] = "EVERYONE";
-        ContentRating4["MATURE"] = "MATURE";
-        ContentRating4["ADULT"] = "ADULT";
-      })(ContentRating3 = exports.ContentRating || (exports.ContentRating = {}));
+      var ContentRating2;
+      (function(ContentRating3) {
+        ContentRating3["EVERYONE"] = "EVERYONE";
+        ContentRating3["MATURE"] = "MATURE";
+        ContentRating3["ADULT"] = "ADULT";
+      })(ContentRating2 = exports.ContentRating || (exports.ContentRating = {}));
     }
   });
 
@@ -723,31 +723,23 @@ var _Sources = (() => {
     }
   });
 
-  // src/ReadComicsOnline/ReadComicsOnline.ts
-  var ReadComicsOnline_exports = {};
-  __export(ReadComicsOnline_exports, {
-    ReadComicsOnline: () => ReadComicsOnline,
-    ReadComicsOnlineInfo: () => ReadComicsOnlineInfo
+  // src/XoxoComic/XoxoComic.ts
+  var XoxoComic_exports = {};
+  __export(XoxoComic_exports, {
+    XoxoComic: () => XoxoComic,
+    XoxoComicInfo: () => XoxoComicInfo
   });
-  var import_types5 = __toESM(require_lib());
+  var import_types4 = __toESM(require_lib());
 
   // common/network.ts
   var import_types = __toESM(require_lib());
-  function buildFormEncoded(pairs) {
-    return pairs.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
-  }
   var Requests = class {
     constructor(baseUrl, requestManager) {
       this.baseUrl = baseUrl;
       this.requestManager = requestManager;
     }
-    async fetch(url, init) {
-      const request = App.createRequest({
-        url,
-        method: init?.method ?? "GET",
-        data: init?.data,
-        headers: init?.headers
-      });
+    async fetch(url) {
+      const request = App.createRequest({ url, method: "GET" });
       const response = await this.requestManager.schedule(request, 3);
       if (response.status === 403 || response.status === 503) {
         throw new Error(
@@ -760,85 +752,73 @@ Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
       }
       return response.data ?? "";
     }
-    async getComicList(page, categoryId) {
-      const query = categoryId ? `page=${page}&cat=${categoryId}` : `page=${page}`;
-      return this.fetch(`${this.baseUrl}/comic-list?${query}`);
-    }
-    async getLatestReleases(page) {
-      return this.fetch(`${this.baseUrl}/latest-release?page=${page}`);
-    }
-    async getHomePage() {
+    getHomePage() {
       return this.fetch(this.baseUrl);
     }
-    async getComicDetails(comicId) {
+    /** Alphabetical browse listing. */
+    getComicList(page) {
+      return this.fetch(`${this.baseUrl}/comic-list?page=${page}`);
+    }
+    /** Recently updated comics, newest first. */
+    getComicUpdates(page) {
+      return this.fetch(`${this.baseUrl}/comic-update?page=${page}`);
+    }
+    /** Genre listings live at their own top-level path, e.g. /action-comic. */
+    getGenreListing(genreId, page) {
+      return this.fetch(`${this.baseUrl}/${genreId}?page=${page}`);
+    }
+    search(keyword, page) {
+      return this.fetch(
+        `${this.baseUrl}/search-comic?keyword=${encodeURIComponent(keyword)}&page=${page}`
+      );
+    }
+    getComicDetails(comicId) {
       return this.fetch(`${this.baseUrl}/comic/${comicId}`);
     }
-    async getChapterPage(comicId, chapterId) {
-      return this.fetch(`${this.baseUrl}/comic/${comicId}/${chapterId}`);
-    }
     /**
-     * The site's search box hits a devbridge-autocomplete JSON endpoint directly, no CSRF
-     * token required. This only supports a title keyword, not the category filters below.
+     * The reader paginates one image per URL, but appending /all renders every page of the
+     * issue in a single document, so a chapter costs one request instead of one per page.
      */
-    async getSearchSuggestions(query) {
-      const raw = JSON.parse(
-        await this.fetch(`${this.baseUrl}/search?query=${encodeURIComponent(query)}`)
-      );
-      return Array.isArray(raw) ? raw : raw.suggestions ?? [];
-    }
-    async getAdvancedSearchPage() {
-      return this.fetch(`${this.baseUrl}/advanced-search`);
-    }
-    /**
-     * Category (tag) filtered search posts to /advSearchFilter with a CSRF token that's
-     * embedded directly in a <script> block on /advanced-search, so it has to be re-scraped
-     * per request (no static meta[name=csrf-token] tag on this site).
-     */
-    async getAdvancedSearchToken() {
-      const html = await this.getAdvancedSearchPage();
-      const match = /_token:\s*'([^']+)'/.exec(html);
-      if (!match?.[1]) {
-        throw new Error("Unable to find the advanced search CSRF token");
-      }
-      return match[1];
-    }
-    async advancedSearch(page, categoryIds) {
-      const token = await this.getAdvancedSearchToken();
-      const innerPairs = categoryIds.map((id) => ["categories[]", id]);
-      const body = buildFormEncoded([
-        ["params", buildFormEncoded(innerPairs)],
-        ["page", page.toString()],
-        ["_token", token]
-      ]);
-      return this.fetch(`${this.baseUrl}/advSearchFilter`, {
-        method: "POST",
-        data: body,
-        headers: { "content-type": "application/x-www-form-urlencoded" }
-      });
+    getChapterPages(comicId, chapterId) {
+      return this.fetch(`${this.baseUrl}/comic/${comicId}/${chapterId}/all`);
     }
   };
 
   // common/parsers.ts
   var import_types2 = __toESM(require_lib());
-  function absoluteImageUrl(src) {
-    const trimmed = src.trim();
-    if (!trimmed) return "";
-    return trimmed.startsWith("//") ? `https:${trimmed}` : trimmed;
+  function normalize(text) {
+    return text.replace(/\s+/g, " ").trim();
   }
-  function slugFromComicHref(href) {
-    const afterComic = href.split("/comic/")[1] ?? "";
-    return (afterComic.split("?")[0] ?? "").replace(/\/$/, "");
+  var NON_GENRE_IDS = /* @__PURE__ */ new Set([
+    "hot-comic",
+    "follow-comic",
+    "new-comic",
+    "popular-comic",
+    "completed-comic",
+    "ongoing-comic"
+  ]);
+  function imageFrom($img) {
+    const src = ($img.attr("data-original") ?? $img.attr("src") ?? "").trim();
+    return src.startsWith("data:") ? "" : src;
   }
-  function parseChapterDate(text) {
-    const cleaned = text.trim();
-    if (/yesterday/i.test(cleaned)) {
-      const date = /* @__PURE__ */ new Date();
-      date.setDate(date.getDate() - 1);
-      return date;
-    }
-    if (/today/i.test(cleaned) || !cleaned) return /* @__PURE__ */ new Date();
-    const parsed = new Date(cleaned.replace(".", ""));
-    return Number.isNaN(parsed.getTime()) ? /* @__PURE__ */ new Date() : parsed;
+  function comicIdFromHref(href) {
+    const after = href.split("/comic/")[1] ?? "";
+    return (after.split("?")[0] ?? "").replace(/\/$/, "").split("/")[0] ?? "";
+  }
+  function chapterIdFromHref(href) {
+    const after = href.split("/comic/")[1] ?? "";
+    const parts = (after.split("?")[0] ?? "").replace(/\/$/, "").split("/");
+    return parts[1] ?? "";
+  }
+  function chapterNumberFrom(text) {
+    const match = /(\d+(?:\.\d+)?)/.exec(text);
+    return match?.[1] ? Number(match[1]) : 0;
+  }
+  function parseDate(text) {
+    const match = /(\d{2})\/(\d{2})\/(\d{4})/.exec(text.trim());
+    if (!match) return void 0;
+    const parsed = /* @__PURE__ */ new Date(`${match[3]}-${match[1]}-${match[2]}T00:00:00Z`);
+    return Number.isNaN(parsed.getTime()) ? void 0 : parsed;
   }
   var Parsers = class {
     /**
@@ -850,39 +830,133 @@ Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
       this.cheerio = cheerio;
     }
     /**
-     * Shared by /comic-list and the homepage "Most Viewed" widget: both render
-     * comics as `.media` blocks with a title link and (usually) a cover image.
+     * Row listings (/comic-list, /comic-update, genre pages) share one shape: an `li.row`
+     * holding the comic link plus a hidden hover tooltip that carries the cover image.
      */
-    parseComicGrid(html) {
+    parseComicRows(html) {
       const $ = this.cheerio.load(html);
       const items = [];
-      $(".media").each((_, el) => {
+      $("li.row").each((_, el) => {
         const $el = $(el);
-        const link = $el.find(".media-heading a").first();
-        const id = slugFromComicHref(link.attr("href") ?? "");
+        const link = $el.find("h3 a").first();
+        const id = comicIdFromHref(link.attr("href") ?? "");
         if (!id) return;
-        let subtitle;
-        $el.find(".media-body > div").each((__, div) => {
-          const $div = $(div);
-          if ($div.attr("id") || $div.find("a, i.fa-eye").length > 0) return;
-          const text = $div.text().trim();
-          if (text) subtitle = text;
-        });
         items.push({
           id,
-          title: link.text().trim(),
-          imageUrl: absoluteImageUrl($el.find(".media-left img").attr("src") ?? ""),
-          subtitle
+          title: normalize(link.text()),
+          imageUrl: imageFrom($el.find(".box_tootip .box_img img").first()),
+          subtitle: normalize($el.find(".col-xs-3").first().text()) || void 0
         });
       });
       return items;
     }
-    parseSearchSuggestions(suggestions) {
-      return suggestions.map((suggestion) => ({
-        id: suggestion.data,
-        title: this.cheerio.load(suggestion.value).text().trim(),
-        imageUrl: ""
-      }));
+    /** Search results use a card grid rather than the row layout. */
+    parseSearchResults(html) {
+      const $ = this.cheerio.load(html);
+      const items = [];
+      $(".item").each((_, el) => {
+        const $el = $(el);
+        const link = $el.find("figcaption h3 a").first();
+        const id = comicIdFromHref(link.attr("href") ?? "");
+        if (!id) return;
+        items.push({
+          id,
+          title: normalize(link.text()),
+          imageUrl: imageFrom($el.find(".image img").first())
+        });
+      });
+      return items;
+    }
+    /** /comic-update rows also carry the newest issue, used for the chapter-updates section. */
+    parseLatestUpdates(html) {
+      const $ = this.cheerio.load(html);
+      const results = [];
+      $("li.row").each((_, el) => {
+        const $el = $(el);
+        const comicLink = $el.find("h3 a").first();
+        const comicId = comicIdFromHref(comicLink.attr("href") ?? "");
+        if (!comicId) return;
+        const chapterLink = $el.find(".hlb-list a").first();
+        const chapterHref = chapterLink.attr("href") ?? "";
+        const chapterId = chapterIdFromHref(chapterHref);
+        if (!chapterId) return;
+        results.push({
+          manga: {
+            id: comicId,
+            title: normalize(comicLink.text()),
+            imageUrl: imageFrom($el.find(".box_tootip .box_img img").first())
+          },
+          chapter: {
+            id: chapterId,
+            chapterNum: chapterNumberFrom(chapterId),
+            title: normalize(chapterLink.text()),
+            publishDate: parseDate($el.find(".col-xs-3").first().text())
+          }
+        });
+      });
+      return results;
+    }
+    /** Genre links are plain top-level paths, e.g. /action-comic. */
+    parseGenres(html) {
+      const $ = this.cheerio.load(html);
+      const seen = /* @__PURE__ */ new Set();
+      const genres = [];
+      $("a[href*='-comic']").each((_, el) => {
+        const $el = $(el);
+        const href = $el.attr("href") ?? "";
+        if (href.includes("/comic/") || href.includes("comic-list")) return;
+        const id = (href.split("/").pop() ?? "").split("?")[0] ?? "";
+        const label = normalize($el.text());
+        if (!id.endsWith("-comic") || !label || seen.has(id) || NON_GENRE_IDS.has(id)) return;
+        seen.add(id);
+        genres.push({ id, value: label });
+      });
+      return genres;
+    }
+    parseComicDetails(html) {
+      const $ = this.cheerio.load(html);
+      const info = $(".detail-info");
+      const genres = [];
+      info.find("li.kind a").each((_, el) => {
+        const $el = $(el);
+        const id = ($el.attr("href") ?? "").split("/").pop() ?? "";
+        const label = normalize($el.text());
+        if (id && label) genres.push({ id, value: label });
+      });
+      const altName = normalize(info.find("li.othername .other-name").text());
+      return {
+        // The heading is "<Name> Comic"; drop the suffix the site appends.
+        title: $("h1.title-detail").first().text().trim().replace(/Comic$/i, "").trim(),
+        imageUrl: imageFrom(info.find(".col-image img").first()),
+        synopsis: normalize($(".detail-content p").first().text()),
+        author: normalize(info.find("li.author p.col-xs-8").text()) || void 0,
+        status: normalize(info.find("li.status p.col-xs-8").text()) || void 0,
+        genres,
+        altTitles: altName ? [altName] : []
+      };
+    }
+    parseChapterList(html) {
+      const $ = this.cheerio.load(html);
+      const entries = [];
+      $(".list-chapter li.row").each((_, el) => {
+        const $el = $(el);
+        const link = $el.find(".chapter a").first();
+        const id = chapterIdFromHref(link.attr("href") ?? "");
+        if (!id) return;
+        const title = normalize(link.text());
+        entries.push({
+          id,
+          chapterNum: chapterNumberFrom(title) || chapterNumberFrom(id),
+          title,
+          publishDate: parseDate($el.find(".col-xs-3").first().text())
+        });
+      });
+      return entries;
+    }
+    /** Requires the /all view; each page image keeps its URL in `data-original`. */
+    parseChapterPages(html) {
+      const $ = this.cheerio.load(html);
+      return $(".page-chapter img").map((_, img) => imageFrom($(img))).get().filter((src) => src.length > 0);
     }
     toPartialSourceMangas(items) {
       return items.map(
@@ -894,80 +968,8 @@ Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
         })
       );
     }
-    parseLatestReleases(html) {
-      const $ = this.cheerio.load(html);
-      const results = [];
-      $(".manga-item").each((_, el) => {
-        const $el = $(el);
-        const mangaLink = $el.find(".manga-heading a").first();
-        const mangaId = slugFromComicHref(mangaLink.attr("href") ?? "");
-        if (!mangaId) return;
-        const chapterLink = $el.find(".manga-chapter a").first();
-        const chapterId = (chapterLink.attr("href") ?? "").split("/").pop() ?? "";
-        results.push({
-          manga: { id: mangaId, title: mangaLink.text().trim(), imageUrl: "" },
-          chapter: {
-            id: chapterId,
-            chapterNum: Number(chapterId) || 0,
-            title: chapterLink.text().trim(),
-            publishDate: parseChapterDate($el.find("h3.manga-heading + small").first().text())
-          }
-        });
-      });
-      return results;
-    }
-    parseComicDetails(html) {
-      const $ = this.cheerio.load(html);
-      let author;
-      let status;
-      let type;
-      const genres = [];
-      $(".dl-horizontal dt").each((_, dt) => {
-        const $dt = $(dt);
-        const label = $dt.text().trim().toLowerCase();
-        const dd = $dt.next("dd");
-        if (label === "type") type = dd.text().trim();
-        else if (label === "status") status = dd.text().trim();
-        else if (label.startsWith("author"))
-          author = dd.find("a").first().text().trim() || dd.text().trim();
-      });
-      $("dd.tag-links a").each((_, a) => {
-        const $a = $(a);
-        const slug = ($a.attr("href") ?? "").split("/").pop() ?? "";
-        if (slug) genres.push({ id: slug, value: $a.text().trim() });
-      });
-      const ratingAttr = $("[data-score]").first().attr("data-score");
-      return {
-        title: $(".listmanga-header").first().text().replace(/Chapters$/i, "").trim(),
-        imageUrl: absoluteImageUrl($(".boxed img").first().attr("src") ?? ""),
-        synopsis: $(".manga.well p").first().text().trim(),
-        author,
-        status,
-        type,
-        genres,
-        rating: ratingAttr ? Number(ratingAttr) : void 0
-      };
-    }
-    parseChapterList(html) {
-      const $ = this.cheerio.load(html);
-      const entries = [];
-      $(".chapters > li").each((_, li) => {
-        const $li = $(li);
-        const link = $li.find(".chapter-title-rtl a").first();
-        const id = (link.attr("href") ?? "").split("/").pop() ?? "";
-        if (!id) return;
-        entries.push({
-          id,
-          chapterNum: Number(id) || 0,
-          title: link.text().trim(),
-          publishDate: parseChapterDate($li.find(".date-chapter-title-rtl").first().text())
-        });
-      });
-      return entries;
-    }
-    parseChapterPages(html) {
-      const $ = this.cheerio.load(html);
-      return $("#all img").map((_, img) => $(img).attr("data-src") ?? $(img).attr("src") ?? "").get().map((src) => absoluteImageUrl(src)).filter((src) => src.length > 0 && !src.startsWith("data:"));
+    toPagedResults(items, metadata) {
+      return App.createPagedResults({ results: this.toPartialSourceMangas(items), metadata });
     }
     buildMangaDetails(comicId, details) {
       const tagSections = [
@@ -986,10 +988,8 @@ Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
           desc: details.synopsis,
           status: details.status ?? "Unknown",
           hentai: false,
-          titles: [details.title],
-          rating: details.rating,
-          tags: tagSections,
-          additionalInfo: details.type ? { Type: details.type } : void 0
+          titles: [details.title, ...details.altTitles],
+          tags: tagSections
         })
       });
     }
@@ -1008,68 +1008,11 @@ Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
     buildChapterDetails(mangaId, chapterId, pages) {
       return App.createChapterDetails({ id: chapterId, mangaId, pages });
     }
-    buildLatestUpdatesHomeSection(id, title, entries, containsMoreItems) {
-      return App.createHomeSection({
-        id,
-        title,
-        type: "singleRowNormal",
-        containsMoreItems,
-        items: entries.map(
-          ({ manga }) => App.createPartialSourceManga({
-            mangaId: manga.id,
-            title: manga.title,
-            image: manga.imageUrl
-          })
-        )
-      });
-    }
-    toPagedResults(items, metadata) {
-      return App.createPagedResults({ results: this.toPartialSourceMangas(items), metadata });
-    }
-  };
-
-  // common/utils.ts
-  var import_types3 = __toESM(require_lib());
-  var FILTER_CACHE_SECONDS = 604800;
-  var FilterPreferences = class {
-    // cheerio is app-injected; see the note in Parsers.
-    constructor(cheerio) {
-      this.cheerio = cheerio;
-      __publicField(this, "categoryFilter", []);
-    }
-    getCategoryFilter() {
-      return this.categoryFilter;
-    }
-    extractOptions($, selectName) {
-      const options = [];
-      $(`select[name="${selectName}"] option`).each((_, el) => {
-        const id = $(el).attr("value");
-        const value = $(el).text().trim();
-        if (id) options.push({ id, value });
-      });
-      return options;
-    }
-    async populateFilters(stateManager, fetchAdvancedSearchPage, force = false) {
-      const lastFetch = Number(await stateManager.retrieve("last-filter-fetch") ?? 0);
-      const cached = lastFetch + FILTER_CACHE_SECONDS > Date.now() / 1e3;
-      if (cached && !force) {
-        const categories = await stateManager.retrieve(".categories");
-        if (categories) {
-          this.categoryFilter = categories;
-          return;
-        }
-      }
-      const html = await fetchAdvancedSearchPage();
-      const $ = this.cheerio.load(html);
-      this.categoryFilter = this.extractOptions($, "categories[]");
-      await stateManager.store(".categories", this.categoryFilter);
-      await stateManager.store("last-filter-fetch", Date.now() / 1e3);
-    }
   };
 
   // common/config.ts
-  var import_types4 = __toESM(require_lib());
-  var BASE_VERSION = "0.2.1";
+  var import_types3 = __toESM(require_lib());
+  var BASE_VERSION = "1.0.0";
   var baseSourceInfo = {
     name: "",
     description: "",
@@ -1077,33 +1020,29 @@ Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
     icon: "icon.png",
     author: "Chris Walker",
     language: "en",
-    contentRating: import_types4.ContentRating.EVERYONE,
+    contentRating: import_types3.ContentRating.EVERYONE,
     websiteBaseURL: "",
-    intents: import_types4.SourceIntents.MANGA_CHAPTERS | import_types4.SourceIntents.HOMEPAGE_SECTIONS | import_types4.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED | import_types4.SourceIntents.SETTINGS_UI
+    intents: import_types3.SourceIntents.MANGA_CHAPTERS | import_types3.SourceIntents.HOMEPAGE_SECTIONS | import_types3.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
   };
 
-  // src/ReadComicsOnline/pbconfig.ts
+  // src/XoxoComic/pbconfig.ts
   var sourceInfo = baseSourceInfo;
-  sourceInfo.name = "ReadComicsOnline";
-  sourceInfo.description = "Extension that pulls content from readcomicsonline.ru.";
-  sourceInfo.websiteBaseURL = "https://readcomicsonline.ru";
+  sourceInfo.name = "XoxoComic";
+  sourceInfo.description = "Extension that pulls comics from xoxocomic.com.";
+  sourceInfo.websiteBaseURL = "https://xoxocomic.com";
   var pbconfig_default = sourceInfo;
 
-  // src/ReadComicsOnline/ReadComicsOnline.ts
-  var ReadComicsOnline = class {
+  // src/XoxoComic/XoxoComic.ts
+  var XoxoComic = class {
     constructor(cheerio) {
       this.cheerio = cheerio;
       __publicField(this, "requestManager");
       __publicField(this, "baseUrl", pbconfig_default.websiteBaseURL);
-      __publicField(this, "stateManager");
       __publicField(this, "requests");
       __publicField(this, "parsers");
-      __publicField(this, "filter");
       this.requestManager = App.createRequestManager({
         requestsPerSecond: 4,
         requestTimeout: 2e4,
-        // Cloudflare challenges requests that don't look like a real browser, so send the
-        // app's own user-agent and a same-site referer on everything.
         interceptor: {
           interceptRequest: async (request) => {
             request.headers = {
@@ -1117,123 +1056,93 @@ Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
           interceptResponse: async (response) => response
         }
       });
-      this.stateManager = App.createSourceStateManager();
       this.requests = new Requests(this.baseUrl, this.requestManager);
       this.parsers = new Parsers(this.cheerio);
-      this.filter = new FilterPreferences(this.cheerio);
     }
     getMangaShareUrl(mangaId) {
       return `${this.baseUrl}/comic/${mangaId}`;
     }
     async getMangaDetails(mangaId) {
       const html = await this.requests.getComicDetails(mangaId);
-      const details = this.parsers.parseComicDetails(html);
-      const sourceManga = this.parsers.buildMangaDetails(mangaId, details);
-      sourceManga.mangaInfo.hentai = pbconfig_default.contentRating !== import_types5.ContentRating.EVERYONE;
-      return sourceManga;
+      return this.parsers.buildMangaDetails(mangaId, this.parsers.parseComicDetails(html));
     }
     async getChapters(mangaId) {
       const html = await this.requests.getComicDetails(mangaId);
-      const entries = this.parsers.parseChapterList(html);
-      return this.parsers.buildChapters(entries);
+      return this.parsers.buildChapters(this.parsers.parseChapterList(html));
     }
     async getChapterDetails(mangaId, chapterId) {
-      const html = await this.requests.getChapterPage(mangaId, chapterId);
+      const html = await this.requests.getChapterPages(mangaId, chapterId);
       const pages = this.parsers.parseChapterPages(html);
       return this.parsers.buildChapterDetails(mangaId, chapterId, pages);
     }
     async getSearchTags() {
-      await this.filter.populateFilters(
-        this.stateManager,
-        () => this.requests.getAdvancedSearchPage()
-      );
+      const html = await this.requests.getHomePage();
       return [
         App.createTagSection({
-          id: "categories",
-          label: "Categories",
-          tags: this.filter.getCategoryFilter().map((category) => App.createTag({ id: category.id, label: category.value }))
+          id: "genres",
+          label: "Genres",
+          tags: this.parsers.parseGenres(html).map((genre) => App.createTag({ id: genre.id, label: genre.value }))
         })
       ];
     }
-    async supportsTagExclusion() {
-      return true;
-    }
     async getSearchResults(query, metadata) {
       const page = metadata?.page ?? 1;
+      const nextPage = { page: page + 1 };
       if (query.title) {
-        const suggestions = await this.requests.getSearchSuggestions(query.title);
-        const items2 = this.parsers.parseSearchSuggestions(suggestions);
-        return this.parsers.toPagedResults(items2, void 0);
+        const html2 = await this.requests.search(query.title, page);
+        const items2 = this.parsers.parseSearchResults(html2);
+        return this.parsers.toPagedResults(items2, items2.length > 0 ? nextPage : void 0);
       }
-      const includedCategoryIds = query.includedTags.map((tag) => tag.id);
-      const excludedNames = new Set(query.excludedTags.map((tag) => tag.label));
-      const html = includedCategoryIds.length > 0 ? await this.requests.advancedSearch(page, includedCategoryIds) : await this.requests.getComicList(page);
-      const items = this.parsers.parseComicGrid(html).filter((item) => !item.subtitle || !excludedNames.has(item.subtitle));
-      return this.parsers.toPagedResults(items, items.length > 0 ? { page: page + 1 } : void 0);
+      const genreId = query.includedTags[0]?.id;
+      const html = genreId ? await this.requests.getGenreListing(genreId, page) : await this.requests.getComicList(page);
+      const items = this.parsers.parseComicRows(html);
+      return this.parsers.toPagedResults(items, items.length > 0 ? nextPage : void 0);
     }
     async getHomePageSections(sectionCallback) {
       const updatesSection = App.createHomeSection({
         id: "updates_section",
         title: "Latest Updates",
-        type: import_types5.HomeSectionType.singleRowNormal,
+        type: import_types4.HomeSectionType.singleRowNormal,
         containsMoreItems: true,
         items: []
       });
       sectionCallback(updatesSection);
-      const mostViewedSection = App.createHomeSection({
-        id: "most_viewed_section",
-        title: "Most Viewed",
-        type: import_types5.HomeSectionType.singleRowLarge,
-        containsMoreItems: false,
+      const browseSection = App.createHomeSection({
+        id: "browse_section",
+        title: "All Comics",
+        type: import_types4.HomeSectionType.singleRowNormal,
+        containsMoreItems: true,
         items: []
       });
-      sectionCallback(mostViewedSection);
-      const updatesEntries = this.parsers.parseLatestReleases(
-        await this.requests.getLatestReleases(1)
-      );
-      updatesSection.items = this.parsers.toPartialSourceMangas(
-        updatesEntries.map(({ manga }) => manga)
-      );
+      sectionCallback(browseSection);
+      const updates = this.parsers.parseLatestUpdates(await this.requests.getComicUpdates(1));
+      updatesSection.items = this.parsers.toPartialSourceMangas(updates.map(({ manga }) => manga));
       sectionCallback(updatesSection);
-      const mostViewed = this.parsers.parseComicGrid(await this.requests.getHomePage());
-      mostViewedSection.items = this.parsers.toPartialSourceMangas(mostViewed);
-      sectionCallback(mostViewedSection);
+      const browse = this.parsers.parseComicRows(await this.requests.getComicList(1));
+      browseSection.items = this.parsers.toPartialSourceMangas(browse);
+      sectionCallback(browseSection);
     }
     async getViewMoreItems(homepageSectionId, metadata) {
-      if (homepageSectionId !== "updates_section") {
-        return App.createPagedResults({ results: [] });
-      }
       const page = metadata?.page ?? 1;
-      const entries = this.parsers.parseLatestReleases(await this.requests.getLatestReleases(page));
-      return this.parsers.toPagedResults(
-        entries.map(({ manga }) => manga),
-        entries.length > 0 ? { page: page + 1 } : void 0
-      );
+      const nextPage = { page: page + 1 };
+      if (homepageSectionId === "updates_section") {
+        const updates = this.parsers.parseLatestUpdates(await this.requests.getComicUpdates(page));
+        return this.parsers.toPagedResults(
+          updates.map(({ manga }) => manga),
+          updates.length > 0 ? nextPage : void 0
+        );
+      }
+      if (homepageSectionId === "browse_section") {
+        const items = this.parsers.parseComicRows(await this.requests.getComicList(page));
+        return this.parsers.toPagedResults(items, items.length > 0 ? nextPage : void 0);
+      }
+      return App.createPagedResults({ results: [] });
     }
     async getCloudflareBypassRequestAsync() {
       return App.createRequest({ url: this.baseUrl, method: "GET" });
     }
-    async getSourceMenu() {
-      return App.createDUISection({
-        id: "settings",
-        isHidden: false,
-        rows: async () => [
-          App.createDUIButton({
-            id: "reload_categories",
-            label: "Reload Categories",
-            onTap: async () => {
-              await this.filter.populateFilters(
-                this.stateManager,
-                () => this.requests.getAdvancedSearchPage(),
-                true
-              );
-            }
-          })
-        ]
-      });
-    }
   };
-  var ReadComicsOnlineInfo = pbconfig_default;
-  return __toCommonJS(ReadComicsOnline_exports);
+  var XoxoComicInfo = pbconfig_default;
+  return __toCommonJS(XoxoComic_exports);
 })();
 this.Sources = _Sources; if (typeof exports === 'object' && typeof module !== 'undefined') {module.exports.Sources = this.Sources;}
