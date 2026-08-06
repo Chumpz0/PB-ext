@@ -749,6 +749,15 @@ var _Sources = (() => {
         headers: init?.headers
       });
       const response = await this.requestManager.schedule(request, 3);
+      if (response.status === 403 || response.status === 503) {
+        throw new Error(
+          `CLOUDFLARE BYPASS ERROR:
+Please go to the homepage of <${this.baseUrl}> and press the cloud icon.`
+        );
+      }
+      if (response.status === 404) {
+        throw new Error(`The requested page ${url} was not found!`);
+      }
       return response.data ?? "";
     }
     async getComicList(page, categoryId) {
@@ -958,7 +967,7 @@ var _Sources = (() => {
     }
     parseChapterPages(html) {
       const $ = this.cheerio.load(html);
-      return $("#all .imagecnt img").map((_, img) => $(img).attr("data-src") ?? $(img).attr("src") ?? "").get().map((src) => absoluteImageUrl(src)).filter((src) => src.length > 0);
+      return $("#all img").map((_, img) => $(img).attr("data-src") ?? $(img).attr("src") ?? "").get().map((src) => absoluteImageUrl(src)).filter((src) => src.length > 0 && !src.startsWith("data:"));
     }
     buildMangaDetails(comicId, details) {
       const tagSections = [
@@ -1060,7 +1069,7 @@ var _Sources = (() => {
 
   // common/config.ts
   var import_types4 = __toESM(require_lib());
-  var BASE_VERSION = "0.2.0";
+  var BASE_VERSION = "0.2.1";
   var baseSourceInfo = {
     name: "",
     description: "",
@@ -1092,7 +1101,21 @@ var _Sources = (() => {
       __publicField(this, "filter");
       this.requestManager = App.createRequestManager({
         requestsPerSecond: 4,
-        requestTimeout: 2e4
+        requestTimeout: 2e4,
+        // Cloudflare challenges requests that don't look like a real browser, so send the
+        // app's own user-agent and a same-site referer on everything.
+        interceptor: {
+          interceptRequest: async (request) => {
+            request.headers = {
+              // Spreading undefined is a no-op, so this stays safe if the app sends no headers.
+              ...request.headers,
+              "user-agent": await this.requestManager.getDefaultUserAgent(),
+              referer: `${this.baseUrl}/`
+            };
+            return request;
+          },
+          interceptResponse: async (response) => response
+        }
       });
       this.stateManager = App.createSourceStateManager();
       this.requests = new Requests(this.baseUrl, this.requestManager);
