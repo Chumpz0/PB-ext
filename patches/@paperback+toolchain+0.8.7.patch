@@ -1,0 +1,20 @@
+diff --git a/node_modules/@paperback/toolchain/dist/commands/bundle.js b/node_modules/@paperback/toolchain/dist/commands/bundle.js
+index a5f42c0..7cd519d 100644
+--- a/node_modules/@paperback/toolchain/dist/commands/bundle.js
++++ b/node_modules/@paperback/toolchain/dist/commands/bundle.js
+@@ -159,13 +159,13 @@ class Bundle extends command_1.CLICommand {
+         await esbuild.build({
+             entryPoints: entryPoints,
+             mainFields: ['module', 'window', 'self', 'main', 'global', 'this'],
+-            globalName: '_Sources',
++            globalName: 'Sources',
+             bundle: true,
+             format: 'iife',
+             outdir: bundlesPath,
+             external: ['axios', 'fs'],
+             footer: {
+-                js: 'this.Sources = _Sources; if (typeof exports === \'object\' && typeof module !== \'undefined\') {module.exports.Sources = this.Sources;}',
++                js: 'if (typeof exports === \'object\' && typeof module !== \'undefined\') {module.exports.Sources = Sources;}',
+             },
+         });
+         bundleTime.end();
