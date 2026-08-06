@@ -741,9 +741,7 @@ var _Sources = (() => {
     ReadComicsOnline: () => ReadComicsOnline,
     ReadComicsOnlineInfo: () => ReadComicsOnlineInfo
   });
-
-  // common/main.ts
-  var import_types5 = __toESM(require_lib());
+  var import_types6 = __toESM(require_lib());
 
   // node_modules/cheerio/dist/browser/index.js
   var browser_exports = {};
@@ -15739,21 +15737,38 @@ var _Sources = (() => {
     }
   };
 
-  // common/main.ts
-  var filter4 = new FilterPreferences();
+  // common/config.ts
+  var import_types5 = __toESM(require_lib());
+  var BASE_VERSION = "0.1.0";
+  var baseSourceInfo = {
+    name: "",
+    description: "",
+    version: BASE_VERSION,
+    icon: "icon.png",
+    author: "Chris Walker",
+    language: "en",
+    contentRating: import_types5.ContentRating.EVERYONE,
+    websiteBaseURL: "",
+    intents: import_types5.SourceIntents.MANGA_CHAPTERS | import_types5.SourceIntents.HOMEPAGE_SECTIONS | import_types5.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED | import_types5.SourceIntents.SETTINGS_UI
+  };
+
+  // src/ReadComicsOnline/pbconfig.ts
+  var sourceInfo = baseSourceInfo;
+  sourceInfo.name = "ReadComicsOnline";
+  sourceInfo.description = "Extension that pulls content from readcomicsonline.ru.";
+  sourceInfo.websiteBaseURL = "https://readcomicsonline.ru";
+  var pbconfig_default = sourceInfo;
+
+  // src/ReadComicsOnline/ReadComicsOnline.ts
   var parsers = new Parsers();
-  var ReadComicsGeneric = class extends import_types5.Source {
-    name;
-    baseUrl;
-    defaultContentRating;
+  var filter4 = new FilterPreferences();
+  var ReadComicsOnlineExtension = class extends import_types6.Source {
+    baseUrl = pbconfig_default.websiteBaseURL;
     _requestManager;
     _requests;
     _stateManager;
-    constructor(params) {
+    constructor() {
       super(browser_exports);
-      this.name = params.name;
-      this.baseUrl = params.domain;
-      this.defaultContentRating = params.contentRating ?? import_types5.ContentRating.EVERYONE;
     }
     /**
      * `App.*` factories only exist inside the app's JS runtime. The toolchain's own `bundle`
@@ -15783,7 +15798,7 @@ var _Sources = (() => {
       const html3 = await this.requests.getComicDetails(mangaId);
       const details = parsers.parseComicDetails(html3);
       const sourceManga = parsers.buildMangaDetails(mangaId, details);
-      sourceManga.mangaInfo.hentai = this.defaultContentRating !== import_types5.ContentRating.EVERYONE;
+      sourceManga.mangaInfo.hentai = pbconfig_default.contentRating !== import_types6.ContentRating.EVERYONE;
       return sourceManga;
     }
     async getChapters(mangaId) {
@@ -15826,7 +15841,7 @@ var _Sources = (() => {
       const updatesSection = App.createHomeSection({
         id: "updates_section",
         title: "Latest Updates",
-        type: import_types5.HomeSectionType.singleRowNormal,
+        type: import_types6.HomeSectionType.singleRowNormal,
         containsMoreItems: true,
         items: []
       });
@@ -15834,7 +15849,7 @@ var _Sources = (() => {
       const mostViewedSection = App.createHomeSection({
         id: "most_viewed_section",
         title: "Most Viewed",
-        type: import_types5.HomeSectionType.singleRowLarge,
+        type: import_types6.HomeSectionType.singleRowLarge,
         containsMoreItems: false,
         items: []
       });
@@ -15857,8 +15872,12 @@ var _Sources = (() => {
         entries.length > 0 ? { page: page + 1 } : void 0
       );
     }
-    async getCloudflareBypassRequestAsync() {
+    // The running app calls the deprecated sync name, not `getCloudflareBypassRequestAsync`.
+    getCloudflareBypassRequest() {
       return App.createRequest({ url: this.baseUrl, method: "GET" });
+    }
+    async getCloudflareBypassRequestAsync() {
+      return this.getCloudflareBypassRequest();
     }
     async getSourceMenu() {
       return App.createDUISection({
@@ -15877,39 +15896,6 @@ var _Sources = (() => {
             }
           })
         ]
-      });
-    }
-  };
-
-  // common/config.ts
-  var import_types6 = __toESM(require_lib());
-  var BASE_VERSION = "0.1.0";
-  var baseSourceInfo = {
-    name: "",
-    description: "",
-    version: BASE_VERSION,
-    icon: "icon.png",
-    author: "Chris Walker",
-    language: "en",
-    contentRating: import_types6.ContentRating.EVERYONE,
-    websiteBaseURL: "",
-    intents: import_types6.SourceIntents.MANGA_CHAPTERS | import_types6.SourceIntents.HOMEPAGE_SECTIONS | import_types6.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED | import_types6.SourceIntents.SETTINGS_UI
-  };
-
-  // src/ReadComicsOnline/pbconfig.ts
-  var sourceInfo = baseSourceInfo;
-  sourceInfo.name = "ReadComicsOnline";
-  sourceInfo.description = "Extension that pulls content from readcomicsonline.ru.";
-  sourceInfo.websiteBaseURL = "https://readcomicsonline.ru";
-  var pbconfig_default = sourceInfo;
-
-  // src/ReadComicsOnline/ReadComicsOnline.ts
-  var ReadComicsOnlineExtension = class extends ReadComicsGeneric {
-    constructor() {
-      super({
-        domain: pbconfig_default.websiteBaseURL,
-        name: pbconfig_default.name,
-        contentRating: pbconfig_default.contentRating
       });
     }
   };
