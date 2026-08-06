@@ -15739,7 +15739,7 @@ var _Sources = (() => {
 
   // common/config.ts
   var import_types5 = __toESM(require_lib());
-  var BASE_VERSION = "0.1.0";
+  var BASE_VERSION = "0.1.1";
   var baseSourceInfo = {
     name: "",
     description: "",
