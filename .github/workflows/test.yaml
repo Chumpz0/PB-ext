@@ -34,9 +34,3 @@ jobs:
         run: npm ci
       - name: Run Tests
         run: npm test
-      - name: Upload Test Results
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: tests.json
-          path: bundles/tests.json

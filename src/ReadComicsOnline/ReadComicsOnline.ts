@@ -1,19 +1,18 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright © 2026 Chris Walker */
 
-import { ReadComicsGeneric } from "../generic/main";
-import pbconfig from "./pbconfig";
-
-const DOMAIN = "https://readcomicsonline.ru";
+import { ReadComicsGeneric } from "../../common/main";
+import sourceInfo from "./pbconfig";
 
 class ReadComicsOnlineExtension extends ReadComicsGeneric {
   constructor() {
     super({
-      domain: DOMAIN,
-      name: pbconfig.name,
-      contentRating: pbconfig.contentRating,
+      domain: sourceInfo.websiteBaseURL,
+      name: sourceInfo.name,
+      contentRating: sourceInfo.contentRating,
     });
   }
 }
 
 export const ReadComicsOnline = new ReadComicsOnlineExtension();
+export const ReadComicsOnlineInfo = sourceInfo;

@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright © 2026 Chris Walker */
 
-import { basePbConfig } from "../generic/config";
+import { baseSourceInfo } from "../../common/config";
 
-const pbConfig = basePbConfig;
+const sourceInfo = baseSourceInfo;
 
-pbConfig.name = "ReadComicsOnline";
-pbConfig.description = "Extension that pulls content from readcomicsonline.ru.";
+sourceInfo.name = "ReadComicsOnline";
+sourceInfo.description = "Extension that pulls content from readcomicsonline.ru.";
+sourceInfo.websiteBaseURL = "https://readcomicsonline.ru";
 
-export default pbConfig;
+export default sourceInfo;

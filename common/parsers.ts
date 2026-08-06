@@ -2,19 +2,17 @@
 /* Copyright © 2026 Chris Walker */
 
 import {
-  ContentRating,
   type Chapter,
   type ChapterDetails,
-  type ChapterUpdatesCarouselItem,
-  type DiscoverSectionItem,
-  type SearchResultItem,
+  type HomeSection,
+  type PagedResults,
+  type PartialSourceManga,
   type SourceManga,
   type TagSection,
 } from "@paperback/types";
 import * as cheerio from "cheerio";
 
 import type {
-  ComicMetadata,
   OptionItem,
   ParsedChapterEntry,
   ParsedComicDetails,
@@ -34,17 +32,16 @@ function slugFromComicHref(href: string): string {
 }
 
 // Dates on the site render like "20 Mar. 2025" or relative strings like "Yesterday".
-function parseChapterDate(text: string): Date | undefined {
+function parseChapterDate(text: string): Date {
   const cleaned = text.trim();
-  if (!cleaned) return undefined;
   if (/yesterday/i.test(cleaned)) {
     const date = new Date();
     date.setDate(date.getDate() - 1);
     return date;
   }
-  if (/today/i.test(cleaned)) return new Date();
+  if (/today/i.test(cleaned) || !cleaned) return new Date();
   const parsed = new Date(cleaned.replace(".", ""));
-  return isNaN(parsed.getTime()) ? undefined : parsed;
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
 export class Parsers {
@@ -84,30 +81,20 @@ export class Parsers {
   parseSearchSuggestions(suggestions: SearchSuggestion[]): ParsedComicSummary[] {
     return suggestions.map((suggestion) => ({
       id: suggestion.data,
-      title: suggestion.value.replace(/<\/?[^>]+>/g, ""),
+      title: cheerio.load(suggestion.value).text().trim(),
       imageUrl: "",
     }));
   }
 
-  toSearchResultItems(items: ParsedComicSummary[]): SearchResultItem[] {
-    return items.map((item) => ({
-      mangaId: item.id,
-      title: item.title,
-      subtitle: item.subtitle,
-      imageUrl: item.imageUrl,
-      contentRating: ContentRating.EVERYONE,
-    }));
-  }
-
-  toDiscoverSimpleItems(items: ParsedComicSummary[]): DiscoverSectionItem[] {
-    return items.map((item) => ({
-      type: "simpleCarouselItem",
-      mangaId: item.id,
-      title: item.title,
-      subtitle: item.subtitle,
-      imageUrl: item.imageUrl,
-      contentRating: ContentRating.EVERYONE,
-    }));
+  toPartialSourceMangas(items: ParsedComicSummary[]): PartialSourceManga[] {
+    return items.map((item) =>
+      App.createPartialSourceManga({
+        mangaId: item.id,
+        title: item.title,
+        image: item.imageUrl,
+        subtitle: item.subtitle,
+      }),
+    );
   }
 
   parseLatestReleases(html: string): { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[] {
@@ -209,61 +196,70 @@ export class Parsers {
       .filter((src) => src.length > 0);
   }
 
-  buildMangaDetails(comicId: string, shareUrl: string, details: ParsedComicDetails): SourceManga {
+  buildMangaDetails(comicId: string, details: ParsedComicDetails): SourceManga {
     const tagSections: TagSection[] = [
-      {
+      App.createTagSection({
         id: "genres",
-        title: "Genres",
-        tags: details.genres.map((genre) => ({ id: genre.id, title: genre.value })),
-      },
+        label: "Genres",
+        tags: details.genres.map((genre) => App.createTag({ id: genre.id, label: genre.value })),
+      }),
     ];
-    return {
-      mangaId: comicId,
-      mangaInfo: {
-        primaryTitle: details.title,
-        thumbnailUrl: details.imageUrl,
-        synopsis: details.synopsis,
+    return App.createSourceManga({
+      id: comicId,
+      mangaInfo: App.createMangaInfo({
+        image: details.imageUrl,
         author: details.author,
-        status: details.status,
-        contentRating: ContentRating.EVERYONE,
-        tagGroups: tagSections,
-        secondaryTitles: [],
+        artist: details.author,
+        desc: details.synopsis,
+        status: details.status ?? "Unknown",
+        hentai: false,
+        titles: [details.title],
         rating: details.rating,
+        tags: tagSections,
         additionalInfo: details.type ? { Type: details.type } : undefined,
-        shareUrl,
-      },
-    };
+      }),
+    });
   }
 
-  buildChapters(sourceManga: SourceManga, entries: ParsedChapterEntry[]): Chapter[] {
-    return entries.map((entry) => ({
-      chapterId: entry.id,
-      sourceManga,
-      langCode: "🇬🇧",
-      chapNum: entry.chapterNum,
-      title: entry.title,
-      publishDate: entry.publishDate,
-    }));
+  buildChapters(entries: ParsedChapterEntry[]): Chapter[] {
+    return entries.map((entry, index) =>
+      App.createChapter({
+        id: entry.id,
+        chapNum: entry.chapterNum,
+        name: entry.title,
+        time: entry.publishDate,
+        langCode: "🇬🇧",
+        sortingIndex: index,
+      }),
+    );
   }
 
   buildChapterDetails(mangaId: string, chapterId: string, pages: string[]): ChapterDetails {
-    return { id: chapterId, mangaId, pages };
+    return App.createChapterDetails({ id: chapterId, mangaId, pages });
   }
 
-  buildLatestUpdatesSection(
+  buildLatestUpdatesHomeSection(
+    id: string,
+    title: string,
     entries: { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[],
-    metadata: ComicMetadata,
-  ): { items: DiscoverSectionItem[]; metadata: ComicMetadata } {
-    const items: ChapterUpdatesCarouselItem[] = entries.map(({ manga, chapter }) => ({
-      type: "chapterUpdatesCarouselItem",
-      mangaId: manga.id,
-      chapterId: chapter.id,
-      title: manga.title,
-      subtitle: chapter.title,
-      imageUrl: manga.imageUrl,
-      publishDate: chapter.publishDate,
-      contentRating: ContentRating.EVERYONE,
-    }));
-    return { items, metadata };
+    containsMoreItems: boolean,
+  ): HomeSection {
+    return App.createHomeSection({
+      id,
+      title,
+      type: "singleRowNormal",
+      containsMoreItems,
+      items: entries.map(({ manga }) =>
+        App.createPartialSourceManga({
+          mangaId: manga.id,
+          title: manga.title,
+          image: manga.imageUrl,
+        }),
+      ),
+    });
+  }
+
+  toPagedResults(items: ParsedComicSummary[], metadata: unknown): PagedResults {
+    return App.createPagedResults({ results: this.toPartialSourceMangas(items), metadata });
   }
 }

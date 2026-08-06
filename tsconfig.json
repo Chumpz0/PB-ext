@@ -13,6 +13,13 @@
     "target": "esnext",
     "resolveJsonModule": true,
 
+    // @paperback/types@0.8.7's package.json "types" field incorrectly points at its raw
+    // ./src/index.ts (not verbatimModuleSyntax-clean) instead of the compiled ./lib/index.d.ts.
+    // Force resolution to the compiled declarations to avoid type-checking their source.
+    "paths": {
+      "@paperback/types": ["./node_modules/@paperback/types/lib/index.d.ts"]
+    },
+
     // Other Outputs
     // "sourceMap": true,
     // "declaration": true,
