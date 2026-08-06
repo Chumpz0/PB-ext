@@ -6,6 +6,7 @@ var Sources = (() => {
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __commonJS = (cb, mod) => function __require() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   };
@@ -30,6 +31,7 @@ var Sources = (() => {
     mod
   ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
   // node_modules/@paperback/types/lib/generated/DynamicUI/Exports/DUIBinding.js
   var require_DUIBinding = __commonJS({
@@ -15706,7 +15708,9 @@ var Sources = (() => {
   var import_types4 = __toESM(require_lib());
   var FILTER_CACHE_SECONDS = 604800;
   var FilterPreferences = class {
-    categoryFilter = [];
+    constructor() {
+      __publicField(this, "categoryFilter", []);
+    }
     getCategoryFilter() {
       return this.categoryFilter;
     }
@@ -15739,7 +15743,7 @@ var Sources = (() => {
 
   // common/config.ts
   var import_types5 = __toESM(require_lib());
-  var BASE_VERSION = "0.1.2";
+  var BASE_VERSION = "0.1.3";
   var baseSourceInfo = {
     name: "",
     description: "",
@@ -15763,12 +15767,12 @@ var Sources = (() => {
   var parsers = new Parsers();
   var filter4 = new FilterPreferences();
   var ReadComicsOnlineExtension = class extends import_types6.Source {
-    baseUrl = pbconfig_default.websiteBaseURL;
-    _requestManager;
-    _requests;
-    _stateManager;
     constructor() {
       super(browser_exports);
+      __publicField(this, "baseUrl", pbconfig_default.websiteBaseURL);
+      __publicField(this, "_requestManager");
+      __publicField(this, "_requests");
+      __publicField(this, "_stateManager");
     }
     /**
      * `App.*` factories only exist inside the app's JS runtime. The toolchain's own `bundle`
@@ -15777,18 +15781,24 @@ var Sources = (() => {
      * lazy and only run once a real request is made from inside the app.
      */
     get requestManager() {
-      this._requestManager ??= App.createRequestManager({
-        requestsPerSecond: 4,
-        requestTimeout: 2e4
-      });
+      if (!this._requestManager) {
+        this._requestManager = App.createRequestManager({
+          requestsPerSecond: 4,
+          requestTimeout: 2e4
+        });
+      }
       return this._requestManager;
     }
     get requests() {
-      this._requests ??= new Requests(this.baseUrl, this.requestManager);
+      if (!this._requests) {
+        this._requests = new Requests(this.baseUrl, this.requestManager);
+      }
       return this._requests;
     }
     get stateManager() {
-      this._stateManager ??= App.createSourceStateManager();
+      if (!this._stateManager) {
+        this._stateManager = App.createSourceStateManager();
+      }
       return this._stateManager;
     }
     getMangaShareUrl(mangaId) {
