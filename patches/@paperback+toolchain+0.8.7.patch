@@ -1,21 +1,15 @@
 diff --git a/node_modules/@paperback/toolchain/dist/commands/bundle.js b/node_modules/@paperback/toolchain/dist/commands/bundle.js
-index a5f42c0..584d00d 100644
+index a5f42c0..293fec1 100644
 --- a/node_modules/@paperback/toolchain/dist/commands/bundle.js
 +++ b/node_modules/@paperback/toolchain/dist/commands/bundle.js
-@@ -159,13 +159,14 @@ class Bundle extends command_1.CLICommand {
-         await esbuild.build({
-             entryPoints: entryPoints,
-             mainFields: ['module', 'window', 'self', 'main', 'global', 'this'],
--            globalName: '_Sources',
-+            globalName: 'Sources',
+@@ -162,8 +162,9 @@ class Bundle extends command_1.CLICommand {
+             globalName: '_Sources',
              bundle: true,
              format: 'iife',
 +            target: 'es2020',
              outdir: bundlesPath,
-             external: ['axios', 'fs'],
+-            external: ['axios', 'fs'],
++            external: ['axios', 'fs', 'cheerio'],
              footer: {
--                js: 'this.Sources = _Sources; if (typeof exports === \'object\' && typeof module !== \'undefined\') {module.exports.Sources = this.Sources;}',
-+                js: 'if (typeof exports === \'object\' && typeof module !== \'undefined\') {module.exports.Sources = Sources;}',
+                 js: 'this.Sources = _Sources; if (typeof exports === \'object\' && typeof module !== \'undefined\') {module.exports.Sources = this.Sources;}',
              },
-         });
-         bundleTime.end();

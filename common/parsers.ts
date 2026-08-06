@@ -10,7 +10,7 @@ import {
   type SourceManga,
   type TagSection,
 } from "@paperback/types";
-import * as cheerio from "cheerio";
+import type { CheerioAPI } from "cheerio";
 
 import type {
   OptionItem,
@@ -46,11 +46,18 @@ function parseChapterDate(text: string): Date {
 
 export class Parsers {
   /**
+   * cheerio is injected by the app rather than bundled: the 0.8 runtime hands each source
+   * its own instance through the source constructor, and bundling a second copy bloats the
+   * output and risks shipping syntax the app's JS engine can't parse.
+   */
+  constructor(private readonly cheerio: CheerioAPI) {}
+
+  /**
    * Shared by /comic-list and the homepage "Most Viewed" widget: both render
    * comics as `.media` blocks with a title link and (usually) a cover image.
    */
   parseComicGrid(html: string): ParsedComicSummary[] {
-    const $ = cheerio.load(html);
+    const $ = this.cheerio.load(html);
     const items: ParsedComicSummary[] = [];
 
     $(".media").each((_, el) => {
@@ -81,7 +88,7 @@ export class Parsers {
   parseSearchSuggestions(suggestions: SearchSuggestion[]): ParsedComicSummary[] {
     return suggestions.map((suggestion) => ({
       id: suggestion.data,
-      title: cheerio.load(suggestion.value).text().trim(),
+      title: this.cheerio.load(suggestion.value).text().trim(),
       imageUrl: "",
     }));
   }
@@ -98,7 +105,7 @@ export class Parsers {
   }
 
   parseLatestReleases(html: string): { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[] {
-    const $ = cheerio.load(html);
+    const $ = this.cheerio.load(html);
     const results: { manga: ParsedComicSummary; chapter: ParsedChapterEntry }[] = [];
 
     $(".manga-item").each((_, el) => {
@@ -125,7 +132,7 @@ export class Parsers {
   }
 
   parseComicDetails(html: string): ParsedComicDetails {
-    const $ = cheerio.load(html);
+    const $ = this.cheerio.load(html);
 
     let author: string | undefined;
     let status: string | undefined;
@@ -167,7 +174,7 @@ export class Parsers {
   }
 
   parseChapterList(html: string): ParsedChapterEntry[] {
-    const $ = cheerio.load(html);
+    const $ = this.cheerio.load(html);
     const entries: ParsedChapterEntry[] = [];
 
     $(".chapters > li").each((_, li) => {
@@ -188,7 +195,7 @@ export class Parsers {
   }
 
   parseChapterPages(html: string): string[] {
-    const $ = cheerio.load(html);
+    const $ = this.cheerio.load(html);
     return $("#all .imagecnt img")
       .map((_, img) => $(img).attr("data-src") ?? $(img).attr("src") ?? "")
       .get()

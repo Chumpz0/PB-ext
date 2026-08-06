@@ -2,7 +2,7 @@
 /* Copyright © 2026 Chris Walker */
 
 import { type SourceStateManager } from "@paperback/types";
-import * as cheerio from "cheerio";
+import type { CheerioAPI } from "cheerio";
 
 import type { OptionItem } from "./models";
 
@@ -11,11 +11,14 @@ const FILTER_CACHE_SECONDS = 604800; // 1 week
 export class FilterPreferences {
   private categoryFilter: OptionItem[] = [];
 
+  // cheerio is app-injected; see the note in Parsers.
+  constructor(private readonly cheerio: CheerioAPI) {}
+
   getCategoryFilter(): OptionItem[] {
     return this.categoryFilter;
   }
 
-  private extractOptions($: cheerio.CheerioAPI, selectName: string): OptionItem[] {
+  private extractOptions($: CheerioAPI, selectName: string): OptionItem[] {
     const options: OptionItem[] = [];
     $(`select[name="${selectName}"] option`).each((_, el) => {
       const id = $(el).attr("value");
@@ -42,7 +45,7 @@ export class FilterPreferences {
     }
 
     const html = await fetchAdvancedSearchPage();
-    const $ = cheerio.load(html);
+    const $ = this.cheerio.load(html);
     this.categoryFilter = this.extractOptions($, "categories[]");
 
     await stateManager.store(".categories", this.categoryFilter);
